@@ -409,8 +409,16 @@ func _process(dt: float) -> void:
 		tool_node.transform = xf
 		var axis_cam: Vector3 = (xf.basis * (tool_info.axis as Vector3)).normalized()
 		var grip_world: Vector3 = xf * (tool_info.bottom + tool_info.axis * tool_info.length * float(cfg.u_r))
-		target_r = _grip_target(grip_world, axis_cam, SHOULDER_R + lean, true, float(cfg.get("alpha_r", 0.3)))
-		grip_r = 1.0
+		if cfg.get("left_only", false):
+			target_l = _grip_target(grip_world, axis_cam, SHOULDER_L + lean, false, 0.2)
+			grip_l = 1.0
+			var draw := player.bow_draw
+			var string_pt := grip_world + Vector3(0.02, 0.0, 0.08) + Vector3(0.05, 0.02, 0.42) * draw
+			target_r = _hand_frame(string_pt + Vector3(0.02, -0.02, 0.08), Vector3(-0.2, 0.1, -1.0), Vector3(0, 1, 0), true)
+			grip_r = 0.7
+		else:
+			target_r = _grip_target(grip_world, axis_cam, SHOULDER_R + lean, true, float(cfg.get("alpha_r", 0.3)))
+			grip_r = 1.0
 		if cfg.two_hand:
 			var gl: Vector3 = xf * (tool_info.bottom + tool_info.axis * tool_info.length * float(cfg.u_l))
 			target_l = _grip_target(gl, axis_cam, SHOULDER_L + lean, false, float(cfg.get("alpha_l", -0.3)))

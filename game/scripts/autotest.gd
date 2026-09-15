@@ -578,6 +578,7 @@ func _world_run() -> void:
 	p.fly = false
 	await _crafting_test()
 	await _building_test()
+	await _animal_test()
 	_finish()
 
 
@@ -705,7 +706,7 @@ func _crafting_test() -> void:
 	inv.add("rope", 5)
 	p.queue_craft(r_wb)
 	p.queue_craft(r_cf)
-	await _seconds(9.0)
+	await _seconds(10.5)
 	_ok("crafted_stations", inv.count("workbench") == 1 and inv.count("campfire") == 1)
 	var ground := p.global_position + (-p.global_basis.z) * 3.0
 	ground.y = main.world.height_at(ground.x, ground.z)
@@ -812,3 +813,41 @@ func _building_test() -> void:
 	await _seconds(1.0)
 	await _shot("w_building")
 	p.fly = false
+
+
+func _animal_test() -> void:
+	var p := _p()
+	p.fly = false
+	var base: Vector3 = main.steam.global_transform * Vector3(6, 0, 0)
+	base.y = main.world.height_at(base.x, base.z) + 0.2
+	await _tp(base, base + Vector3(0, 1, -10))
+	await _seconds(9.0)
+	_ok("animals_spawned", get_tree().get_nodes_in_group("animals").size())
+	# a deer in front: shoot it with the bow
+	var deer := Animal.spawn(main, "deer", base + Vector3(0, 0.5, -12))
+	await _seconds(1.0)
+	p.inventory.add("bow", 1)
+	p.inventory.add("arrow", 5)
+	p.select_slot(p.inventory.find("bow"))
+	await _seconds(0.8)
+	p.look_at_point(deer.global_position + Vector3.UP * 0.8)
+	p.bow_draw = 1.0
+	p._release_bow()
+	await _seconds(1.0)
+	_ok("arrow_hit_deer", deer.hp < 70.0 or deer.state == "dead" or deer.state == "flee")
+	deer.damage(500.0, p)
+	await _seconds(1.5)
+	_ok("deer_dead", deer.state == "dead")
+	var meat_before := main.find_children("*", "Pickup", true, false).filter(func(x: Node) -> bool: return x.item_id == "raw_meat").size()
+	deer.butcher(p)
+	await _seconds(1.0)
+	var meat_after := main.find_children("*", "Pickup", true, false).filter(func(x: Node) -> bool: return x.item_id == "raw_meat").size()
+	_ok("butchered_meat", meat_after - meat_before)
+	# wolf attack
+	var hp0 := p.survival.health
+	var wolf := Animal.spawn(main, "wolf", base + Vector3(3, 0.5, 3))
+	await _seconds(0.5)
+	await _shot("w_wolf")
+	await _seconds(5.0)
+	_ok("wolf_bit_player", p.survival.health < hp0)
+	_ok("wolf_state", wolf.state)

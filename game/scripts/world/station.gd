@@ -100,9 +100,9 @@ func _flames(pos: Vector3, fire: bool) -> GPUParticles3D:
 	pm.scale_max = 1.0
 	var grad := Gradient.new()
 	if fire:
-		grad.set_color(0, Color(1.0, 0.75, 0.3, 0.9))
-		grad.add_point(0.5, Color(1.0, 0.35, 0.05, 0.6))
-		grad.set_color(1, Color(0.2, 0.18, 0.16, 0.0))
+		grad.set_color(0, Color(0.9, 0.42, 0.1, 0.55))
+		grad.add_point(0.45, Color(0.75, 0.2, 0.03, 0.35))
+		grad.set_color(1, Color(0.2, 0.08, 0.02, 0.0))
 	else:
 		grad.set_color(0, Color(0.3, 0.3, 0.3, 0.5))
 		grad.set_color(1, Color(0.5, 0.5, 0.5, 0.0))
@@ -111,7 +111,7 @@ func _flames(pos: Vector3, fire: bool) -> GPUParticles3D:
 	pm.color_ramp = gt
 	p.process_material = pm
 	var q := QuadMesh.new()
-	q.size = Vector2(0.35, 0.45) if fire else Vector2(0.7, 0.7)
+	q.size = Vector2(0.22, 0.32) if fire else Vector2(0.7, 0.7)
 	var m := StandardMaterial3D.new()
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if fire else BaseMaterial3D.BLEND_MODE_MIX

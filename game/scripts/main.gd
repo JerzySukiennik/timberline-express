@@ -47,6 +47,10 @@ func _ready() -> void:
 	_player()
 	_ui()
 	_ambience()
+	if world:
+		animals = AnimalDirector.new()
+		animals.main = self
+		add_child(animals)
 	grass_field = GrassField.new()
 	grass_field.world = terrain
 	grass_field.focus = player
@@ -233,6 +237,7 @@ func _check_loaded() -> void:
 var environment: Environment
 var _post_mat: ShaderMaterial
 var grass_field: GrassField
+var animals: AnimalDirector
 
 const QUALITY := {
 	"low": {"ssao": false, "ssao_q": 0, "volumetric": false, "glow": false, "rays": false, "splits": 2, "shadow_dist": 60.0, "grass": 0.0, "scale": 0.7, "taa": false},
@@ -439,8 +444,9 @@ func _samples() -> void:
 	ChopTree.create(self, _ground_xf(-24, 58).origin - Vector3.UP * 0.1, "fir_b", 0.75)
 	for p in [Vector2(-42, 45), Vector2(-45, 50), Vector2(-9, 49), Vector2(-28, 45)]:
 		Bush.create(self, _ground_xf(p.x, p.y).origin, randf_range(0.8, 1.1))
-	_static_model("res://assets/models/animals/deer.glb", _ground_xf(-6, 58, 2.4), 1.0)
-	_static_model("res://assets/models/animals/wolf.glb", _ground_xf(-1, 55, -2.2), 1.0)
+	Animal.spawn(self, "deer", _ground_xf(-6, 58).origin + Vector3.UP * 0.3)
+	Animal.spawn(self, "deer", _ground_xf(-9, 61).origin + Vector3.UP * 0.3)
+	Animal.spawn(self, "fox", _ground_xf(-2, 52).origin + Vector3.UP * 0.3)
 
 
 func _static_model(path: String, xf: Transform3D, scale: float) -> void:

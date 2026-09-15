@@ -26,11 +26,11 @@ void fragment() {
 	float water_depth = clamp((-world.z) - (-VERTEX.z), 0.0, 10.0);
 	float t = smoothstep(0.0, 2.2, water_depth);
 	vec3 refr = textureLod(screen_tex, SCREEN_UV + NORMAL_MAP.xy * 0.004, 0.0).rgb;
-	vec3 col = mix(refr * shallow * 2.2, deep, t);
+	vec3 col = mix(refr * shallow * 1.4, deep, smoothstep(0.0, 1.0, t));
 	float fres = pow(1.0 - clamp(dot(normalize(VIEW), NORMAL), 0.0, 1.0), 4.0);
 	ALBEDO = col;
 	ROUGHNESS = 0.04;
 	METALLIC = 0.0;
 	SPECULAR = 0.6;
-	ALPHA = clamp(smoothstep(0.0, 0.35, water_depth) * 0.92 + fres * 0.2, 0.0, 1.0);
+	ALPHA = clamp(smoothstep(0.0, 0.6, water_depth) * 0.9 + fres * 0.1, 0.0, 1.0);
 }

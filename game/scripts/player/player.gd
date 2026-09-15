@@ -149,6 +149,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_released("primary"):
 		_swing_held = false
 		_end_grab()
+		_release_bow()
 	if event.is_action_pressed("secondary") and aim and aim.on_secondary.is_valid():
 		aim.on_secondary.call(self)
 	elif event.is_action_pressed("secondary") and equipped_id == "hammer" and main and main.has_method("open_build_menu"):
@@ -184,6 +185,14 @@ func _primary_pressed() -> void:
 		placer.try_place()
 		return
 	if equipped_id == "hammer" and builder.primary():
+		return
+	if Items.tool_type(equipped_id) == "bow":
+		if inventory.count("arrow") > 0:
+			bow_draw = 0.001
+			Sfx.play("bow_draw", -4.0)
+		else:
+			if main:
+				main.toast("No arrows")
 		return
 	if Items.is_tool(equipped_id):
 		_swing_held = true
@@ -324,6 +333,10 @@ func _physics_process(dt: float) -> void:
 		viewmodel.request_swing()
 	_eating(dt)
 	_water_check(dt)
+	if bow_draw > 0.0:
+		bow_draw = minf(1.0, bow_draw + dt / 0.9)
+		if not Input.is_action_pressed("primary") and not "--autotest" in OS.get_cmdline_user_args():
+			_release_bow()
 	if _e_held and aim and aim.on_hold.is_valid():
 		aim.on_hold.call(self, dt)
 	mouse_delta = mouse_delta.lerp(Vector2.ZERO, clampf(dt * 12.0, 0.0, 1.0))
@@ -760,3 +773,20 @@ func craft_progress() -> float:
 	if craft_queue.is_empty():
 		return 0.0
 	return float(craft_queue[0].t) / float((craft_queue[0].recipe as Dictionary).time)
+
+
+var bow_draw := 0.0
+
+
+func _release_bow() -> void:
+	if bow_draw <= 0.0:
+		return
+	var pwr := bow_draw
+	bow_draw = 0.0
+	if pwr < 0.2 or Items.tool_type(equipped_id) != "bow" or not inventory.remove("arrow", 1):
+		return
+	var dir := -camera.global_basis.z
+	Arrow.fire(get_tree().current_scene, camera.global_position + dir * 0.6 + camera.global_basis.y * -0.05, dir, lerpf(18.0, 62.0, pwr), self, pwr)
+	Sfx.play("bow_release", -2.0)
+	Sfx.play("arrow_whoosh", -8.0)
+	viewmodel.impulse(Vector3(0, 0, 0.05))

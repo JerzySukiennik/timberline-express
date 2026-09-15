@@ -50,6 +50,7 @@ const DEFS := {
 	"flatcar_kit": {"name": "Flatcar Kit", "kind": "kit", "stack": 3, "model": M + "items/rail_kit.glb"},
 	"steam_kit": {"name": "Steam Engine Kit", "kind": "kit", "stack": 1, "model": M + "items/steam_kit.glb"},
 	"electric_kit": {"name": "Electric Drive Kit", "kind": "kit", "stack": 1, "model": M + "items/electric_kit.glb"},
+	"plow_kit": {"name": "Plow", "kind": "kit", "stack": 1, "model": M + "items/rail_kit.glb"},
 	"rail_kit": {"name": "Rail Section", "kind": "resource", "stack": 10, "model": M + "items/rail_kit.glb"},
 }
 

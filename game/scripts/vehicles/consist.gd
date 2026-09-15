@@ -5,6 +5,7 @@ extends RefCounted
 var vehicles: Array[RailVehicle] = []
 var v := 0.0
 var net: TrackNetwork
+var obstacles: TrackObstacles
 
 
 func mass() -> float:
@@ -35,13 +36,26 @@ func build(list: Array) -> void:
 		cur.place(c)
 
 
+## Re-lay every vehicle behind the lead (after teleporting the lead).
+func reposition() -> void:
+	for i in range(1, vehicles.size()):
+		var prev := vehicles[i - 1]
+		var cur := vehicles[i]
+		var c := prev.center_cursor()
+		c.move(-(prev.coupler_rear + cur.coupler_front + 0.05), false)
+		cur.place(c)
+
+
 func step(dt: float) -> Dictionary:
 	var M := mass()
 	var push := 0.0
 	var brake := 0.0
+	var any_broken := false
 	for veh in vehicles:
 		veh.sim(dt, v)
-		push += veh.drive_force(v, dt)
+		if veh.broken():
+			any_broken = true
+		push += veh.drive_force(v, dt) if not veh.broken() else 0.0
 		push -= veh.mass * RailVehicle.G * veh.forward().y
 		brake += veh.brake_amount() * 0.2 * veh.mass * RailVehicle.G
 	var roll := 0.0025 * M * RailVehicle.G
@@ -53,8 +67,33 @@ func step(dt: float) -> Dictionary:
 	else:
 		nv -= signf(nv) * fr
 	v = nv
+	if any_broken:
+		brake += 0.6 * M * RailVehicle.G
 	var ds := v * dt
 	var impact := 0.0
+	if obstacles and absf(ds) > 0.0:
+		var end_v := lead() if ds > 0.0 else tail()
+		var end_pos := end_v.end_cursor(ds > 0.0).position()
+		var fwd := end_v.forward() * signf(ds)
+		var blk := obstacles.blocking_distance(end_pos, fwd)
+		if blk.d < absf(ds) + 0.25:
+			var o: Dictionary = blk.o
+			var speed := absf(v)
+			var plow := lead().has_plow and ds > 0.0 and str(o.kind) != "gap"
+			if plow and speed > 3.0 and str(o.kind) == "tree":
+				if is_instance_valid(o.node):
+					o.node.queue_free()
+				obstacles.clear(o.id)
+				Sfx.play_at("plow_impact", end_pos, 2.0)
+				v *= 0.7
+				end_v.damage(speed * 0.8)
+			else:
+				ds = signf(ds) * maxf(blk.d - 0.25, 0.0)
+				if speed > 2.0:
+					end_v.damage(speed * speed * 0.9)
+					Sfx.play_at("metal_crash" if str(o.kind) != "tree" else "wood_crash", end_pos, 3.0)
+				impact = speed
+				v = -v * 0.1
 	if absf(ds) > 0.0:
 		var probe := lead().end_cursor(true) if ds > 0.0 else tail().end_cursor(false)
 		var left := probe.move(ds + signf(ds) * 0.02, false)

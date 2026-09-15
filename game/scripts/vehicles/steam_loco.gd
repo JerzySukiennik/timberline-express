@@ -11,6 +11,7 @@ var energy := 0.0          # MJ of fuel in the firebox
 var fire := 0.0            # 0..1 visual/thermal fire intensity
 var pressure := 0.0        # bar
 var door_open := false
+var valve := 100.0          # safety valve condition; a worn valve sticks and the boiler can explode
 var regulator: Lever
 var reverser: Lever
 var brake: Lever
@@ -210,10 +211,14 @@ func sim(dt: float, v: float) -> void:
 			tender.water = maxf(0.0, tender.water - (heat * 0.25 + steam_use * 6.0) * dt)
 	else:
 		pressure -= (0.05 + steam_use) * dt
-	pressure = clampf(pressure, 0.0, MAX_P)
-	var venting := pressure > VALVE_P
+	pressure = clampf(pressure, 0.0, MAX_P if valve > 0.0 else MAX_P + 2.0)
+	var venting := pressure > VALVE_P and valve > 0.0
+	if pressure > VALVE_P:
+		valve = maxf(0.0, valve - dt * 1.2)
 	if venting:
 		pressure = VALVE_P
+	if pressure >= MAX_P - 0.05 and valve <= 0.0:
+		_explode()
 	_valve_loop.volume_db = lerpf(_valve_loop.volume_db, 2.0 if venting else -80.0, dt * 6.0)
 	if venting and not _steam.emitting:
 		_steam.emitting = true
@@ -221,9 +226,30 @@ func sim(dt: float, v: float) -> void:
 		_steam.emitting = false
 
 
+func _explode() -> void:
+	pressure = 0.0
+	energy = 0.0
+	fire = 0.0
+	valve = 60.0
+	Sfx.play_at("boiler_explosion", global_position + Vector3.UP * 1.8, 8.0, 0.02, 1.0, 400.0)
+	Sfx.play_at("steam_burst", global_position + Vector3.UP * 1.8, 4.0)
+	Fx.burst(get_tree().current_scene, global_position + Vector3.UP * 2.0, Vector3.UP, "dust", 30)
+	damage(70.0)
+	for c in [consist.vehicles]:
+		for veh in c:
+			if veh != self and veh.global_position.distance_to(global_position) < 10.0:
+				veh.damage(25.0)
+	var pl = get_tree().get_first_node_in_group("player")
+	if pl:
+		var d := (pl as Node3D).global_position.distance_to(global_position)
+		if d < 14.0:
+			pl.survival.damage(lerpf(85.0, 5.0, d / 14.0), "a boiler explosion")
+			pl.velocity += ((pl as Node3D).global_position - global_position).normalized() * 9.0 + Vector3.UP * 5.0
+
+
 func drive_force(v: float, _dt: float) -> float:
 	var r := reverser.stepped()
-	if absf(r) < 0.05 or pressure < 0.5:
+	if absf(r) < 0.05 or pressure < 0.5 or broken():
 		return 0.0
 	var falloff := clampf(1.0 - absf(v) / 16.0, 0.05, 1.0)
 	return regulator.value * r * (pressure / 10.0) * F_MAX * falloff

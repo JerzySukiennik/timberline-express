@@ -27,6 +27,7 @@ const CRAFT := [
 	{"out": "bow", "n": 1, "in": {"stick": 4, "rope": 3}, "at": "workbench", "time": 4.0, "sound": "craft_wood"},
 	{"out": "arrow", "n": 4, "in": {"stick": 1, "stone": 1, "fiber": 2}, "at": "workbench", "time": 2.0, "sound": "craft_wood"},
 	{"out": "rail_kit", "n": 1, "in": {"iron_ingot": 3, "plank": 2}, "at": "workbench", "time": 4.0, "sound": "craft_metal"},
+	{"out": "plow_kit", "n": 1, "in": {"iron_ingot": 12, "plank": 4, "nails": 10}, "at": "workbench", "time": 6.0, "sound": "craft_metal"},
 	{"out": "flatcar_kit", "n": 1, "in": {"plank": 24, "nails": 20, "iron_ingot": 8}, "at": "workbench", "time": 8.0, "sound": "craft_wood"},
 	{"out": "steam_kit", "n": 1, "in": {"iron_ingot": 45, "plank": 16, "nails": 30, "coal": 10}, "at": "workbench", "time": 12.0, "sound": "craft_metal"},
 	{"out": "electric_kit", "n": 1, "in": {"iron_ingot": 40, "copper_ingot": 30, "plank": 10}, "at": "workbench", "time": 12.0, "sound": "craft_metal"},

@@ -102,6 +102,7 @@ var sidings: Array[TrackSegment] = []
 var samples := PackedVector3Array()     # dense centerline samples for terrain shaping and surface queries
 var _grid := {}
 
+var obstacles: TrackObstacles
 var rail_material: StandardMaterial3D
 var sleeper_material: StandardMaterial3D
 var ballast_material: StandardMaterial3D
@@ -338,7 +339,7 @@ func build_segment_visual(seg: TrackSegment) -> Node3D:
 	root.name = "Seg%d" % seg.id
 	var rail_st := SurfaceTool.new()
 	rail_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_sweep_rails(rail_st, seg)
+	_sweep_rails(rail_st, seg, obstacles.gaps_on(seg) if obstacles else [])
 	rail_st.generate_normals()
 	var rails := MeshInstance3D.new()
 	rails.mesh = rail_st.commit()
@@ -405,7 +406,7 @@ func _frame(seg: TrackSegment, s: float) -> Array:
 	return [p, side]
 
 
-func _sweep_rails(st: SurfaceTool, seg: TrackSegment) -> void:
+func _sweep_rails(st: SurfaceTool, seg: TrackSegment, gaps: Array = []) -> void:
 	# simplified flat-bottom rail profile (x across, y up), rail top at y = 0
 	var prof := [Vector2(-0.035, 0.0), Vector2(0.035, 0.0), Vector2(0.035, -0.045), Vector2(0.009, -0.05),
 		Vector2(0.009, -0.14), Vector2(0.065, -0.15), Vector2(0.065, -0.16), Vector2(-0.065, -0.16),
@@ -414,7 +415,15 @@ func _sweep_rails(st: SurfaceTool, seg: TrackSegment) -> void:
 	for rail_side in [-1.0, 1.0]:
 		var prev: Array = []
 		for i in n + 1:
-			var f := _frame(seg, seg.length * i / n)
+			var sd := seg.length * i / n
+			var in_gap := false
+			for g in gaps:
+				if sd > (g as Vector2).x and sd < (g as Vector2).y:
+					in_gap = true
+			if in_gap:
+				prev = []
+				continue
+			var f := _frame(seg, sd)
 			var center: Vector3 = f[0] + (f[1] as Vector3) * rail_side * (GAUGE * 0.5 + 0.035)
 			var ring: Array = []
 			for q in prof:

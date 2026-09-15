@@ -494,6 +494,10 @@ func _world_run() -> void:
 		await _world_graphics()
 		_finish()
 		return
+	if _only.contains("obstacles"):
+		await _obstacle_test()
+		_finish()
+		return
 	var p := _p()
 	for tool_id in ["pickaxe", "axe", "knife"]:
 		p.inventory.add(tool_id, 1)
@@ -580,6 +584,7 @@ func _world_run() -> void:
 	await _building_test()
 	await _animal_test()
 	await _save_test()
+	await _obstacle_test()
 	_finish()
 
 
@@ -891,3 +896,50 @@ func _save_test() -> void:
 	_ok("pieces_restored", after_pieces == before_pieces and after_pieces > 0)
 	_ok("inventory_restored_iron", p.inventory.count("iron_ingot") >= 7)
 	DirAccess.remove_absolute(SaveGame.path(2))
+
+
+func _obstacle_test() -> void:
+	var obs: TrackObstacles = main.obstacles
+	await _seconds(2.0)
+	var kinds := {}
+	var total := 0
+	for seg in main.network.segments:
+		for o in obs.obstacles_for(seg):
+			kinds[o.kind] = int(kinds.get(o.kind, 0)) + 1
+			total += 1
+	_ok("obstacles_generated", total)
+	_ok("obstacle_kinds", kinds)
+	# walk the player to the first generated blocking obstacle (not a gap) so it spawns
+	var target := {}
+	for seg in main.network.segments:
+		if seg.visual == null:
+			continue
+		for oo in obs.obstacles_for(seg):
+			if oo.kind != "gap":
+				target = oo
+				break
+		if not target.is_empty():
+			break
+	if target.is_empty():
+		_ok("obstacles_active", 0)
+		return
+	var tp: Vector3 = (target.seg as TrackNetwork.TrackSegment).point(target.s)
+	main.player.global_position = tp + Vector3(30, 3, 0)
+	main.player.velocity = Vector3.ZERO
+	await _seconds(2.5)
+	_ok("obstacles_active", obs.active.size())
+	if not obs.active.has(target.id):
+		return
+	var o: Dictionary = obs.active[target.id]
+	var c: Consist = (main.steam if main.steam else main.handcar).consist
+	var seg: TrackNetwork.TrackSegment = o.seg
+	c.lead().place(main.network.cursor_at(seg, maxf(float(o.s) - 30.0, 5.0), false))
+	c.reposition()
+	for v in c.vehicles:
+		v.apply_pose(true)
+	c.v = 9.0
+	var hp0: float = c.lead().hp
+	await _seconds(5.0)
+	_ok("stopped_at_obstacle", absf(c.v) < 1.0)
+	_ok("lead_damaged", c.lead().hp < hp0)
+	_ok("crash_kind", o.kind)

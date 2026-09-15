@@ -60,7 +60,7 @@ static func save(main: Node, slot: int) -> bool:
 		var cur := lead.center_cursor()
 		var cd := {"edge": tracks.key_of(cur.seg), "s": cur.s, "flip": cur.flip, "v": c.v, "vehicles": []}
 		for v in c.vehicles:
-			var vd := {"type": _type(v), "state": _vehicle_state(v), "pieces": [], "stations": []}
+			var vd := {"type": _type(v), "state": _vehicle_state(v), "pieces": [], "stations": [], "hp": v.hp, "plow": v.has_plow}
 			for pc in (v.get_meta("pieces", {}) as Dictionary).values():
 				vd.pieces.append({"piece": pc.piece, "cell": [pc.cell.x, pc.cell.y, pc.cell.z], "edge": pc.edge, "hp": pc.hp})
 			for st in v.get_children():
@@ -186,6 +186,9 @@ static func load_into(main: Node, slot: int) -> bool:
 			var v2: RailVehicle = list[i]
 			var vd2: Dictionary = cd.vehicles[i]
 			_apply_state(v2, vd2.state)
+			v2.hp = float(vd2.get("hp", 100.0))
+			if bool(vd2.get("plow", false)):
+				main.attach_plow(v2)
 			for pc in vd2.pieces:
 				var piece := Building.build(v2, str(pc.piece), Vector3i(int(pc.cell[0]), int(pc.cell[1]), int(pc.cell[2])), int(pc.edge))
 				piece.hp = float(pc.hp)

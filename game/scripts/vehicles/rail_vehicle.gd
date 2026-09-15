@@ -18,6 +18,8 @@ var travel := 0.0               # signed distance travelled
 var last_delta := Transform3D.IDENTITY
 var surface := "wood"
 var display_name := "Vehicle"
+var hp := 100.0
+var has_plow := false
 var _clack_acc := 0.0
 var _roll: AudioStreamPlayer3D
 var _squeal: AudioStreamPlayer3D
@@ -71,6 +73,10 @@ func _kit_points() -> void:
 			return "[E] Install the steam engine (replaces the handcar)"
 		if eq == "electric_kit" and (self is Handcar or self is SteamLoco):
 			return "[E] Install the electric drive (replaces this engine)"
+		if eq == "plow_kit" and consist and consist.lead() == self and not has_plow:
+			return "[E] Mount the plow on the front"
+		if eq == "hammer" and (hp < 100.0 or (self is SteamLoco and (self as SteamLoco).valve < 100.0)):
+			return "[E] Repair %s  %d%%  (1 iron ingot)" % [display_name, int(hp)]
 		return ""
 	mid.on_use = func(p: Node) -> void:
 		var eq := (p as Player).equipped_id
@@ -78,6 +84,15 @@ func _kit_points() -> void:
 		if (eq == "steam_kit" and self is Handcar) or (eq == "electric_kit" and (self is Handcar or self is SteamLoco)):
 			if main.has_method("upgrade_engine") and main.upgrade_engine(self, eq):
 				(p as Player).inventory.remove_at((p as Player).selected_slot, 1)
+		elif eq == "plow_kit" and consist and consist.lead() == self:
+			if main.attach_plow(self):
+				(p as Player).inventory.remove_at((p as Player).selected_slot, 1)
+		elif eq == "hammer" and (p as Player).inventory.remove("iron_ingot", 1):
+			hp = minf(100.0, hp + 40.0)
+			if self is SteamLoco:
+				(self as SteamLoco).valve = 100.0
+			Sfx.play_at("hammer_hit", global_position + Vector3.UP, 0.0)
+			(p as Player).viewmodel.request_swing()
 
 
 static var _glass: StandardMaterial3D
@@ -167,6 +182,19 @@ func apply_pose(teleport := false) -> void:
 
 func forward() -> Vector3:
 	return -global_basis.z
+
+
+func damage(amount: float) -> void:
+	hp = maxf(0.0, hp - amount)
+	for pc in (get_meta("pieces", {}) as Dictionary).values():
+		pc.hp = maxf(0.0, pc.hp - amount * randf_range(0.2, 0.8))
+		if pc.hp <= 0.0:
+			Sfx.play_at("wood_crash", pc.global_position, 0.0)
+			Building.remove(pc)
+
+
+func broken() -> bool:
+	return hp <= 0.0
 
 
 ## Positive pushes the vehicle forward (N). Override in powered vehicles.

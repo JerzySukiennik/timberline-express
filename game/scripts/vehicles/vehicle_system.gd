@@ -4,6 +4,7 @@ extends Node
 
 var consists: Array[Consist] = []
 var net: TrackNetwork
+var obstacles: TrackObstacles
 
 
 func _ready() -> void:
@@ -13,6 +14,7 @@ func _ready() -> void:
 func add(list: Array) -> Consist:
 	var c := Consist.new()
 	c.net = net
+	c.obstacles = obstacles
 	c.build(list)
 	consists.append(c)
 	return c

@@ -246,5 +246,7 @@ func _process(dt: float) -> void:
 	if player.riding:
 		var km: float = player.main.distance_km if player.main else 0.0
 		_speed.text = "%s  ·  %d km/h  ·  %.1f km" % [player.riding.display_name, int(absf(player.riding.consist.v) * 3.6), km]
+		if player.riding.hp < 100.0:
+			_speed.text += "  ·  damage %d%%" % int(100.0 - player.riding.hp)
 	else:
 		_speed.text = ""

@@ -119,6 +119,15 @@ func _build_world() -> void:
 	add_child(world)
 	world.setup(gen, network)
 	terrain = world
+	obstacles = TrackObstacles.new()
+	obstacles.name = "Obstacles"
+	obstacles.main = self
+	obstacles.net = network
+	obstacles.tracks = world.tracks
+	obstacles.gen = gen
+	add_child(obstacles)
+	network.obstacles = obstacles
+	vehicles.obstacles = obstacles
 	var start := world.tracks.start_segment()
 	network.switch_changed.connect(_on_switch_changed)
 	handcar = Handcar.new()
@@ -164,6 +173,29 @@ func attach_flatcar(c: Consist) -> bool:
 	f.place(probe)
 	Sfx.play_at("coupling", f.global_position, 0.0)
 	toast("Flatcar coupled")
+	return true
+
+
+func attach_plow(v: RailVehicle) -> bool:
+	if v.has_plow:
+		return false
+	v.has_plow = true
+	var plow := MeshInstance3D.new()
+	var pm := PrismMesh.new()
+	pm.size = Vector3(2.3, 0.7, 0.9)
+	plow.mesh = pm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = load("res://assets/textures/ground/rockface_diff.jpg")
+	mat.albedo_color = Color(0.25, 0.24, 0.23)
+	mat.metallic = 0.7
+	mat.roughness = 0.5
+	mat.uv1_triplanar = true
+	plow.material_override = mat
+	v.add_child(plow)
+	plow.position = Vector3(0, 0.45, -v.coupler_front - 0.35)
+	plow.rotation = Vector3(-PI * 0.5, 0, 0)
+	Sfx.play_at("craft_metal", plow.global_position, 0.0)
+	toast("Plow mounted")
 	return true
 
 
@@ -264,6 +296,7 @@ var _post_mat: ShaderMaterial
 var grass_field: GrassField
 var animals: AnimalDirector
 var day_night: DayNight
+var obstacles: TrackObstacles
 
 const QUALITY := {
 	"low": {"ssao": false, "ssao_q": 0, "volumetric": false, "glow": false, "rays": false, "splits": 2, "shadow_dist": 60.0, "grass": 0.0, "scale": 0.7, "taa": false},

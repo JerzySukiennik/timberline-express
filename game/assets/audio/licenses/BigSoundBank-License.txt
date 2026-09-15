@@ -1,0 +1,11 @@
+BigSoundBank.com (Joseph SARDIN) - license as stated on https://bigsoundbank.com/licenses.html
+and on every individual sound page used here ("CC0 (public domain): Free and royalty-free"),
+verified 2026-09-15:
+
+  "You are allowed to: Share, copy, distribute and communicate the material by all means
+   and in all formats. Adapt, remix, transform and create from material. Use, including for
+   commercial purposes. Without any restrictions. Without asking permission.
+   This is: Creative Commons CC0 1.0 Universal / WTFPL license / Public Domain Dedication."
+
+Credit is optional (appreciated): "Additional sounds: Joseph SARDIN - BigSoundBank.com"
+Full CC0 legal code: see CC0-1.0.txt in this folder.

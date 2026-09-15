@@ -1,0 +1,4 @@
+OpenGameArt.org assets used here are marked CC0 on their pages (verified 2026-09-15):
+- "75 CC0 breaking / falling / hit sfx" by rubberduck - https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+- "20 Rustles of dry leaves" by qubodup - https://opengameart.org/content/20-rustles-dry-leaves
+Full CC0 legal code: see CC0-1.0.txt in this folder.

@@ -23,8 +23,7 @@ static func create(parent: Node, pos: Vector3, variant := "fir_b", scale := 1.0)
 	t.model.scale = Vector3.ONE * scale
 	t.add_child(t.model)
 	for mi in t.model.find_children("Foliage*", "MeshInstance3D", true, false):
-		var tex := "fir_tip_card" if String(mi.name) == "FoliageTip" else "fir_branch_card"
-		(mi as MeshInstance3D).material_override = Terrain.foliage_material(load("res://assets/textures/trees/%s.png" % tex), 14.0)
+		(mi as MeshInstance3D).material_override = Terrain.foliage_material(load("res://assets/textures/trees/fir_branch_card.png"), 14.0, Color(0.74, 0.82, 0.66), true)
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var aabb := AABB()
 	for mi in t.model.find_children("Trunk", "MeshInstance3D", true, false):
@@ -43,9 +42,9 @@ static func create(parent: Node, pos: Vector3, variant := "fir_b", scale := 1.0)
 func tool_hit(tool_id: String, point: Vector3, normal: Vector3, player: Node) -> bool:
 	if _falling:
 		return false
-	var dmg := {"axe": 1.0, "pickaxe": 0.35, "knife": 0.1}.get(tool_id, 0.0) as float
-	Sfx.play_at("chop", point, -1.0 if dmg >= 1.0 else -7.0, 0.12)
-	Fx.burst(get_tree().current_scene, point, normal, "wood", 12 if dmg >= 1.0 else 4)
+	var dmg: float = {"axe": 1.0, "pickaxe": 0.35, "knife": 0.1, "hammer": 0.1}.get(Items.tool_type(tool_id), 0.0) * Items.tool_power(tool_id)
+	Sfx.play_at("chop", point, -1.0 if dmg >= 0.5 else -7.0, 0.12)
+	Fx.burst(get_tree().current_scene, point, normal, "wood", 12 if dmg >= 0.5 else 4)
 	if dmg <= 0.0:
 		return false
 	Fx.scar(self, point, normal, 0.16, Color(0.55, 0.42, 0.28, 0.9))
@@ -114,6 +113,7 @@ func _physics_process(dt: float) -> void:
 		for i in n:
 			var pos := _falling.global_transform * Vector3(0, height * (0.12 + 0.7 * i / n), 0)
 			Pickup.spawn(scene, "log", 1, pos + Vector3.UP * 0.3)
+		Pickup.spawn(scene, "stick", 3, _falling.global_transform * Vector3(0, height * 0.8, 0) + Vector3.UP * 0.5)
 		Fx.burst(scene, _falling.global_transform * Vector3(0, height * 0.5, 0), Vector3.UP, "leaf", 30)
 		_falling.queue_free()
 		queue_free()

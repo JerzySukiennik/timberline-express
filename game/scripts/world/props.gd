@@ -42,7 +42,7 @@ static func crate(parent: Node3D, main: Node, xf: Transform3D, title: String, co
 	for id in contents:
 		inv.add(id, int(contents[id]))
 	body.set_meta("inventory", inv)
-	var it := Interactable.make(body, 0.5, Vector3(0, aabb.end.y * 1.5, 0))
+	var it := Interactable.make(body, 0.8, Vector3(0, aabb.end.y * 0.9, 0))
 	it.prompt = func(_p: Node) -> String: return "[E] Open %s" % title
 	it.on_use = func(_p: Node) -> void:
 		Sfx.play_at("crate_open", body.global_position, -3.0)
@@ -85,7 +85,7 @@ static func barrel(parent: Node3D, xf: Transform3D, fuel: bool) -> StaticBody3D:
 	cs.shape = cyl
 	cs.position.y = 0.475
 	body.add_child(cs)
-	var it := Interactable.make(body, 0.4, Vector3(0, 0.95, 0))
+	var it := Interactable.make(body, 0.62, Vector3(0, 0.55, 0))
 	var from := "jerrycan" if fuel else "bucket"
 	var to := "jerrycan_fuel" if fuel else "bucket_water"
 	it.prompt = func(p: Node) -> String:

@@ -1,0 +1,21 @@
+Batch 2 (2026-09-15) CC0 / public-domain sources other than BigSoundBank and Kenney.
+Each license was checked on the source page.
+
+OpenGameArt.org (license shown on page: CC0)
+- https://opengameart.org/content/pain-sounds-by-emopreben - EmoPreben
+- https://opengameart.org/content/grunts-male-death-and-pain - thebardofblasphemy
+- https://opengameart.org/content/dog-growl - bonebrah
+- https://opengameart.org/content/8-wet-squish-slurp-impacts - Independent.nu (Ljudbank)
+- https://opengameart.org/content/100-cc0-metal-and-wood-sfx - rubberduck
+- https://opengameart.org/content/bear-growls - AntumDeluge (U.S. Fish & Wildlife Service recordings)
+- https://opengameart.org/content/medieval-sound-effects-weapon-textures - Ben Jaszczak & Brian Nelson
+  (Still North Media / Free Firearm Sound Library team; "CC0 NO RIGHTS RESERVED")
+- https://opengameart.org/content/20-rustles-dry-leaves - qubodup
+
+Wikimedia Commons
+- File:Rabbit oinks and squeaks.wav - kessir - CC0
+- File:618483 foleyhaven piglet-squeal-01.flac - Foleyhaven - CC0
+- File:Wolfsgeheul Wolfcenter Dörverden.webm - XenonX3 - CC0
+- File:Explosion-LS100155.ogg - Fg2 - public domain (PD-self)
+
+Full CC0 legal code: CC0-1.0.txt

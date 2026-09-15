@@ -7,7 +7,8 @@ uniform vec4 tint : source_color = vec4(0.78, 0.84, 0.72, 1.0);
 uniform float alpha_cut = 0.45;
 uniform float sway = 0.05;
 uniform float sway_height = 10.0;
-uniform float backlight = 0.35;
+uniform float backlight = 0.55;
+uniform bool flip_back = true;
 
 void vertex() {
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -20,9 +21,10 @@ void vertex() {
 void fragment() {
 	vec4 c = texture(albedo_tex, UV);
 	if (c.a < alpha_cut) discard;
-	ALBEDO = c.rgb * tint.rgb;
+	float depth_ao = clamp(UV.y * 0.0 + 1.0, 0.0, 1.0);
+	ALBEDO = c.rgb * tint.rgb * vec3(0.92, 1.04, 0.86);
 	ROUGHNESS = 0.85;
 	SPECULAR = 0.2;
 	BACKLIGHT = vec3(backlight) * c.rgb;
-	if (!FRONT_FACING) NORMAL = -NORMAL;
+	if (flip_back && !FRONT_FACING) NORMAL = -NORMAL;
 }

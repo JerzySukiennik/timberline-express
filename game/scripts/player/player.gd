@@ -24,6 +24,13 @@ var camera: Camera3D
 var viewmodel: ViewModel
 var shape: CapsuleShape3D
 var inventory := Inventory.new(29)
+var survival: Survival
+var placer: Placer
+var builder: Builder
+var shape_target: Object = null
+var shape_idx := -1
+var eat_progress := 0.0
+var in_water := false
 var selected_slot := 0
 var equipped_id := ""
 
@@ -91,6 +98,15 @@ func _ready() -> void:
 	viewmodel.player = self
 	camera.add_child(viewmodel)
 	inventory.changed.connect(_on_inventory_changed)
+	builder = Builder.new()
+	builder.player = self
+	add_child(builder)
+	placer = Placer.new()
+	placer.player = self
+	add_child(placer)
+	survival = Survival.new()
+	survival.player = self
+	add_child(survival)
 
 
 func set_look(yaw: float, pitch: float) -> void:
@@ -135,11 +151,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_end_grab()
 	if event.is_action_pressed("secondary") and aim and aim.on_secondary.is_valid():
 		aim.on_secondary.call(self)
+	elif event.is_action_pressed("secondary") and equipped_id == "hammer" and main and main.has_method("open_build_menu"):
+		main.open_build_menu()
+	if event.is_action_pressed("rotate_build") and equipped_id == "hammer":
+		builder.rotate_piece()
 	if event.is_action_pressed("interact"):
 		_e_held = true
 		if aim and aim.on_use.is_valid():
 			aim.on_use.call(self)
 			viewmodel.gesture("press")
+		elif shape_target and is_instance_valid(shape_target) and shape_target.use_shape(shape_idx, self):
+			viewmodel.gesture("grab")
 		elif _pickup_target():
 			pass
 		elif main and main.has_method("toggle_inventory"):
@@ -148,7 +170,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_e_held = false
 		if aim and aim.on_release.is_valid():
 			aim.on_release.call(self)
-	if event.is_action_pressed("drop"):
+	if event.is_action_pressed("drop") and equipped_id != "hammer":
 		drop_selected()
 
 
@@ -157,6 +179,11 @@ func _primary_pressed() -> void:
 		grabbing = aim
 		if grabbing.grab_start.is_valid():
 			grabbing.grab_start.call(self)
+		return
+	if Items.def(equipped_id).get("kind", "") == "placeable":
+		placer.try_place()
+		return
+	if equipped_id == "hammer" and builder.primary():
 		return
 	if Items.is_tool(equipped_id):
 		_swing_held = true
@@ -190,9 +217,19 @@ func _refresh_equipped() -> void:
 	if id != equipped_id or viewmodel.current_id != id:
 		equipped_id = id
 		viewmodel.equip(id)
+	if placer:
+		placer.set_item(id)
 
 
 func _on_inventory_changed() -> void:
+	var id := _slot_id(selected_slot)
+	if id != equipped_id and id == "":
+		# the held item just left the slot: remove it from the hand immediately
+		equipped_id = ""
+		viewmodel.equip("", true)
+		if placer:
+			placer.set_item("")
+		return
 	_refresh_equipped()
 
 
@@ -273,6 +310,7 @@ func _physics_process(dt: float) -> void:
 		_breath_cd = 2.6
 	var was_air := not is_on_floor()
 	move_and_slide()
+	_vehicle_hits()
 	_detect_ride()
 	if is_on_floor() and was_air:
 		_landed()
@@ -284,6 +322,8 @@ func _physics_process(dt: float) -> void:
 		_end_grab()
 	if _swing_held and Items.is_tool(equipped_id):
 		viewmodel.request_swing()
+	_eating(dt)
+	_water_check(dt)
 	if _e_held and aim and aim.on_hold.is_valid():
 		aim.on_hold.call(self, dt)
 	mouse_delta = mouse_delta.lerp(Vector2.ZERO, clampf(dt * 12.0, 0.0, 1.0))
@@ -304,17 +344,20 @@ func _apply_ride() -> void:
 
 
 func _detect_ride() -> void:
+	# Ray down instead of slide collisions: standing still produces no collision some frames, which used to drop
+	# the ride for a frame and let the vehicle slide out from under the player. While airborne above the same
+	# vehicle (a jump on a moving train) the ride is kept so the player lands where they jumped.
+	var space := get_world_3d().direct_space_state
+	var reach := 0.45 if is_on_floor() else 4.0
+	var q := PhysicsRayQueryParameters3D.create(global_position + Vector3.UP * 0.3, global_position - Vector3.UP * reach, 4)
+	q.exclude = [get_rid()]
+	var hit := space.intersect_ray(q)
 	var found: RailVehicle = null
-	if is_on_floor():
-		for i in get_slide_collision_count():
-			var c := get_slide_collision(i)
-			if c.get_normal().y > 0.6 and c.get_collider() is RailVehicle:
-				found = c.get_collider()
-				break
-	if found == null and riding != null:
-		# stepped or jumped off: keep the vehicle's momentum
-		if not is_on_floor():
-			velocity += Vector3(_last_ride_vel.x, 0.0, _last_ride_vel.z)
+	if not hit.is_empty() and hit.collider is RailVehicle:
+		found = hit.collider
+	if found == null and riding != null and is_instance_valid(riding) and not is_on_floor():
+		# stepped off the edge: keep the vehicle's momentum once
+		velocity += Vector3(_last_ride_vel.x, 0.0, _last_ride_vel.z)
 	riding = found
 
 
@@ -333,6 +376,8 @@ func _can_stand() -> bool:
 func _landed() -> void:
 	var f := _fall_speed
 	_fall_speed = 0.0
+	if f > 11.5 and not fly:
+		survival.damage((f - 11.5) * 9.0, "a fall")
 	if f > 2.0:
 		_land_dip = clampf(f * 0.018, 0.02, 0.16)
 		Sfx.play("land_hard" if f > 6.0 else "land_soft", linear_to_db(clampf(f / 8.0, 0.2, 1.0)) - 6.0)
@@ -376,7 +421,8 @@ func _footsteps(dt: float) -> void:
 	if _step_phase >= 1.0:
 		_step_phase -= 1.0
 		var vol := -6.0 if sprinting else (-17.0 if crouching else -11.0)
-		Sfx.play("step_" + surface_under(), vol, 0.1)
+		if not in_water:
+			Sfx.play("step_" + surface_under(), vol, 0.1)
 
 
 func _camera_fx(dt: float, input: Vector2) -> void:
@@ -419,6 +465,23 @@ func _update_aim() -> void:
 		new_aim = grabbing
 	aim = new_aim
 	aim_prompt = aim.get_prompt(self) if aim else ""
+	shape_target = null
+	shape_idx = -1
+	if aim_prompt == "":
+		var sq := PhysicsRayQueryParameters3D.create(from, from + dir * minf(limit, REACH), 32 | 64 | 1)
+		sq.exclude = [get_rid()]
+		var shit := space.intersect_ray(sq)
+		if shit.is_empty():
+			var sq2 := PhysicsRayQueryParameters3D.create(from, from + dir * REACH, 64)
+			shit = space.intersect_ray(sq2)
+		if not shit.is_empty() and (shit.collider as Object).has_method("prompt_shape"):
+			var pr: String = shit.collider.prompt_shape(int(shit.shape), self)
+			if pr != "":
+				shape_target = shit.collider
+				shape_idx = int(shit.shape)
+				aim_prompt = pr
+	if aim_prompt == "" and builder and builder.active() and builder.prompt != "":
+		aim_prompt = builder.prompt
 	if aim_prompt == "":
 		var pk := _aimed_pickup()
 		if pk:
@@ -569,7 +632,9 @@ func tool_hit(id: String) -> void:
 	var valid := false
 	if OS.is_debug_build() or "--autotest" in OS.get_cmdline_user_args():
 		print("[hit] ", id, " -> ", (col as Node).name, " ", col.get_class())
-	if col.has_method("tool_hit"):
+	if col.has_method("tool_hit_shape"):
+		valid = col.tool_hit_shape(id, hit.position, hit.normal, self, int(hit.shape))
+	elif col.has_method("tool_hit"):
 		valid = col.tool_hit(id, hit.position, hit.normal, self)
 	else:
 		var surf := str((col as Node).get_meta("surface", "ground")) if col is Node else "ground"
@@ -594,3 +659,104 @@ func tool_hit(id: String) -> void:
 					main.toast("%s broke" % Items.display_name(id))
 			else:
 				inventory.changed.emit()
+
+
+# ---------------------------------------------------------------- survival helpers
+
+var _eat_armed := true
+
+
+func _eating(dt: float) -> void:
+	if not Input.is_action_pressed("primary"):
+		_eat_armed = true
+	if eat_progress <= 0.0:
+		if _eat_armed and input_enabled and Input.is_action_pressed("primary") and Items.is_consumable(equipped_id) and grabbing == null:
+			eat_progress = 0.001
+			_eat_armed = false
+		return
+	if not Input.is_action_pressed("primary") or not Items.is_consumable(equipped_id) or not input_enabled:
+		eat_progress = 0.0
+		return
+	eat_progress += dt / 1.1
+	if eat_progress >= 1.0:
+		eat_progress = 0.0
+		var d := Items.def(equipped_id)
+		survival.eat(float(d.get("food", 0.0)), float(d.get("water", 0.0)), float(d.get("heal", 0.0)), float(d.get("poison", 0.0)))
+		Sfx.play(str(d.get("eat", "eat_crunch")), -3.0)
+		var leaves := str(d.get("leaves", ""))
+		if leaves != "":
+			inventory.swap_item(equipped_id, leaves, selected_slot)
+		else:
+			inventory.remove_at(selected_slot, 1)
+
+
+var _hit_cd := 0.0
+
+
+func _vehicle_hits() -> void:
+	_hit_cd = maxf(0.0, _hit_cd - get_physics_process_delta_time())
+	for i in get_slide_collision_count():
+		var c := get_slide_collision(i)
+		var col := c.get_collider()
+		if col is RailVehicle and absf(c.get_normal().y) < 0.5 and _hit_cd <= 0.0:
+			var v: float = absf((col as RailVehicle).consist.v)
+			if v > 2.5 and col != riding:
+				_hit_cd = 1.0
+				survival.damage(v * 5.0, "a train")
+				velocity += c.get_normal() * v * 1.2 + Vector3.UP * 2.0
+
+
+var _splash_cd := 0.0
+
+
+func _water_check(dt: float) -> void:
+	in_water = false
+	if main == null or main.world == null:
+		return
+	var lvl: float = main.world.water_level_at(global_position.x, global_position.z)
+	in_water = lvl > global_position.y + 0.05
+	if in_water:
+		velocity.x *= 1.0 - dt * 3.0
+		velocity.z *= 1.0 - dt * 3.0
+		_splash_cd -= dt
+		if move_speed > 0.8 and _splash_cd <= 0.0:
+			_splash_cd = 0.5
+			Sfx.play("footstep_water", -8.0, 0.1)
+
+
+# ---------------------------------------------------------------- crafting queue
+
+signal crafted(id: String)
+
+var craft_queue: Array = []   # [{recipe, t}]
+
+
+func queue_craft(r: Dictionary) -> bool:
+	if craft_queue.size() >= 8 or not Recipes.take(r, inventory):
+		return false
+	craft_queue.append({"recipe": r, "t": 0.0})
+	Sfx.play(str(r.get("sound", "craft_wood")), -6.0, 0.1)
+	return true
+
+
+func _process(dt: float) -> void:
+	if craft_queue.is_empty():
+		return
+	var job: Dictionary = craft_queue[0]
+	job.t = float(job.t) + dt
+	var r: Dictionary = job.recipe
+	if float(job.t) >= float(r.time):
+		craft_queue.pop_front()
+		var left := inventory.add(str(r.out), int(r.n))
+		if left > 0 and main:
+			main.drop_item(str(r.out), left)
+		Sfx.play("craft_complete", -6.0)
+		crafted.emit(str(r.out))
+		if not craft_queue.is_empty():
+			Sfx.play(str((craft_queue[0].recipe as Dictionary).get("sound", "craft_wood")), -6.0, 0.1)
+
+
+func craft_progress() -> float:
+	if craft_queue.is_empty():
+		return 0.0
+	return float(craft_queue[0].t) / float((craft_queue[0].recipe as Dictionary).time)

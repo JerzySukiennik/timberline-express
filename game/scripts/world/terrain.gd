@@ -83,6 +83,10 @@ func height_at(x: float, z: float) -> float:
 	return lerpf(a, b, tz)
 
 
+func sample_fast(x: float, z: float) -> Vector2:
+	return Vector2(height_at(x, z), dist_to_track(x, z))
+
+
 func dist_to_track(x: float, z: float) -> float:
 	var ix := clampi(int(round(x)) + HALF, 0, RES - 1)
 	var iz := clampi(int(round(z)) + HALF, 0, RES - 1)
@@ -122,25 +126,90 @@ func _mesh() -> void:
 	arr[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	var mat := ShaderMaterial.new()
-	mat.shader = load("res://shaders/ground.gdshader")
-	for n in ["forest", "leaves", "gravel"]:
-		mat.set_shader_parameter(n + "_diff", load("res://assets/textures/ground/%s_diff.jpg" % n))
-		mat.set_shader_parameter(n + "_nor", load("res://assets/textures/ground/%s_nor.jpg" % n))
-	mat.set_shader_parameter("forest_arm", load("res://assets/textures/ground/forest_arm.jpg"))
-	var nt := NoiseTexture2D.new()
-	nt.width = 256
-	nt.height = 256
-	nt.seamless = true
-	var fn := FastNoiseLite.new()
-	fn.frequency = 0.02
-	nt.noise = fn
-	mat.set_shader_parameter("macro_noise", nt)
+	var mat := Terrain.ground_material()
 	var mi := MeshInstance3D.new()
 	mi.name = "Ground"
 	mi.mesh = mesh
 	mi.material_override = mat
 	add_child(mi)
+
+
+
+static var _ground_mat: ShaderMaterial
+
+
+static func ground_material() -> ShaderMaterial:
+	if _ground_mat:
+		return _ground_mat
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/ground.gdshader")
+	var T := "res://assets/textures/ground/"
+	for pair in [["grass", "grass"], ["leaf", "leafgrass"], ["dirt", "forest"], ["rock", "rockface"], ["gravel", "gravel"]]:
+		mat.set_shader_parameter(pair[0] + "_diff", load(T + pair[1] + "_diff.jpg"))
+		mat.set_shader_parameter(pair[0] + "_nor", load(T + pair[1] + "_nor.jpg"))
+	mat.set_shader_parameter("grass_arm", load(T + "grass_arm.jpg"))
+	mat.set_shader_parameter("macro_noise", noise_texture())
+	_ground_mat = mat
+	return mat
+
+
+static var _noise_tex: NoiseTexture2D
+
+
+static func noise_texture() -> NoiseTexture2D:
+	if _noise_tex == null:
+		_noise_tex = NoiseTexture2D.new()
+		_noise_tex.width = 256
+		_noise_tex.height = 256
+		_noise_tex.seamless = true
+		var fn := FastNoiseLite.new()
+		fn.frequency = 0.02
+		_noise_tex.noise = fn
+	return _noise_tex
+
+
+static var _grass_mesh: ArrayMesh
+static var _grass_mat: ShaderMaterial
+
+
+## A clump of ~10 tapered blades (2 segments each) with UV.y = height along the blade.
+static func grass_clump() -> ArrayMesh:
+	if _grass_mesh:
+		return _grass_mesh
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 99
+	for b in 17:
+		var a := rng.randf() * TAU
+		var r := rng.randf() * 0.16
+		var base := Vector3(cos(a) * r, 0, sin(a) * r)
+		var hgt := rng.randf_range(0.2, 0.52)
+		var wdt := rng.randf_range(0.011, 0.02)
+		var face := rng.randf() * TAU
+		var side := Vector3(cos(face), 0, sin(face))
+		var lean := Vector3(cos(a), 0, sin(a)) * rng.randf_range(0.03, 0.14)
+		var nrm := side.cross(Vector3.UP).normalized()
+		var pts := []
+		for k in 3:
+			var t := k / 2.0
+			var c := base + Vector3.UP * hgt * t + lean * t * t
+			var w := wdt * (1.0 - t * 0.92)
+			pts.append([c - side * w, c + side * w, t])
+		for k in 2:
+			var p0: Array = pts[k]
+			var p1: Array = pts[k + 1]
+			for tri in [[p0[0], p0[2], p0[1], p0[2], p1[1], p1[2]], [p0[0], p0[2], p1[1], p1[2], p1[0], p1[2]]]:
+				for v in 3:
+					st.set_normal((nrm + Vector3.UP * 0.35).normalized())
+					st.set_uv(Vector2(0, tri[v * 2 + 1]))
+					st.add_vertex(tri[v * 2])
+	_grass_mesh = st.commit()
+	_grass_mat = ShaderMaterial.new()
+	_grass_mat.shader = load("res://shaders/grass.gdshader")
+	_grass_mat.set_shader_parameter("noise", noise_texture())
+	_grass_mesh.surface_set_material(0, _grass_mat)
+	return _grass_mesh
 
 
 func _collision() -> void:
@@ -221,8 +290,9 @@ static func _rel(root: Node, n: Node3D) -> Transform3D:
 	return t
 
 
-static func foliage_material(tex: Texture2D, sway_height: float, tint := Color(0.78, 0.84, 0.72)) -> ShaderMaterial:
+static func foliage_material(tex: Texture2D, sway_height: float, tint := Color(0.78, 0.84, 0.72), outward_normals := false) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
+	m.set_shader_parameter("flip_back", not outward_normals)
 	m.shader = load("res://shaders/foliage.gdshader")
 	m.set_shader_parameter("albedo_tex", tex)
 	m.set_shader_parameter("sway_height", sway_height)
@@ -293,6 +363,8 @@ func scatter(avoid: Array) -> void:
 			continue
 		var ps: PackedScene = load(rock_files[rng.randi() % rock_files.size()])
 		var inst := ps.instantiate() as Node3D
+		for rm in inst.find_children("*", "MeshInstance3D", true, false):
+			(rm as MeshInstance3D).material_override = MineRock.moss_material()
 		var body := StaticBody3D.new()
 		body.set_meta("surface", "rock")
 		add_child(body)
@@ -310,6 +382,33 @@ func scatter(avoid: Array) -> void:
 	_scatter_plants("res://assets/models/plants", ["shrub_02"], 90, 8.0, 140.0, 5.0, avoid, 2.0)
 	_scatter_plants("res://assets/models/plants", ["dry_branches"], 120, 3.0, 140.0, 3.2, avoid, 1.0)
 	_scatter_plants("res://assets/models/plants", ["tree_stump"], 25, 10.0, 140.0, 6.0, avoid, 1.0)
+
+
+func _grass(avoid: Array) -> void:
+	var buf := PackedFloat32Array()
+	var count := 0
+	for gz in range(-70, 70):
+		for gx in range(-90, 70):
+			var x := gx * 0.85 + rng.randf() * 0.8
+			var z := gz * 0.85 + 30.0 + rng.randf() * 0.8
+			if dist_to_track(x, z) < 2.8 or not _free_spot(x, z, 2.8, []):
+				continue
+			var n := noise.get_noise_2d(x * 3.0, z * 3.0)
+			if n < -0.25:
+				continue
+			var sc := rng.randf_range(0.7, 1.3) * (0.8 + n * 0.5)
+			ChunkWorld._append_xf(buf, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc)), Vector3(x, height_at(x, z) - 0.02, z)))
+			count += 1
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = grass_clump()
+	mm.instance_count = count
+	mm.buffer = buf
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "Grass"
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mmi)
 
 
 func _tree_shadow_proxies(xforms: Array) -> void:
@@ -380,8 +479,7 @@ func _multimesh_from_glb(path: String, xforms: Array, is_tree: bool, sway_h := 1
 		mmi.multimesh = mm
 		var nm: String = m.name
 		if is_tree and nm.begins_with("Foliage"):
-			var tex_name := "fir_tip_card" if nm == "FoliageTip" else "fir_branch_card"
-			mmi.material_override = foliage_material(load("res://assets/textures/trees/%s.png" % tex_name), 14.0)
+			mmi.material_override = foliage_material(load("res://assets/textures/trees/fir_branch_card.png"), 14.0, Color(0.74, 0.82, 0.66), true)
 			# alpha-tested cards in four shadow cascades were the single biggest frame cost; cones cast the shadow instead
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif not is_tree:

@@ -22,6 +22,15 @@ var _chest_title: Label
 var _cells: Array[Dictionary] = []   # {inv, index, panel, icon, count, dur}
 var _tooltip: Label
 var _chest_grid: GridContainer
+var station: Station
+var _craft_panel: PanelContainer
+var _craft_list: VBoxContainer
+var _craft_title: Label
+var _craft_bar: ColorRect
+var _craft_queue_label: Label
+var _process_bar: ColorRect
+var _process_row: Control
+var _recipe_rows: Array = []
 
 
 func _ready() -> void:
@@ -70,6 +79,45 @@ func _ready() -> void:
 	_chest_grid.add_theme_constant_override("v_separation", 6)
 	(_chest_panel.get_child(0) as VBoxContainer).add_child(_chest_grid)
 	_chest_panel.visible = false
+	var proc := HBoxContainer.new()
+	proc.add_theme_constant_override("separation", 8)
+	(_chest_panel.get_child(0) as VBoxContainer).add_child(proc)
+	_process_row = proc
+	var pbg := Panel.new()
+	pbg.custom_minimum_size = Vector2(4 * SLOT + 18, 8)
+	pbg.add_theme_stylebox_override("panel", UI.box(Color(0, 0, 0, 0.5), 3))
+	proc.add_child(pbg)
+	_process_bar = ColorRect.new()
+	_process_bar.color = UI.LANTERN
+	_process_bar.position = Vector2(1, 1)
+	_process_bar.size = Vector2(0, 6)
+	pbg.add_child(_process_bar)
+	_craft_panel = _make_panel(row, "Crafting")
+	var cv := _craft_panel.get_child(0) as VBoxContainer
+	_craft_title = cv.get_child(0) as Label
+	var qrow := HBoxContainer.new()
+	cv.add_child(qrow)
+	_craft_queue_label = UI.label("", 14, UI.DIM, "Medium")
+	_craft_queue_label.custom_minimum_size = Vector2(170, 0)
+	qrow.add_child(_craft_queue_label)
+	var qbg := Panel.new()
+	qbg.custom_minimum_size = Vector2(200, 8)
+	qbg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	qbg.add_theme_stylebox_override("panel", UI.box(Color(0, 0, 0, 0.5), 3))
+	qrow.add_child(qbg)
+	_craft_bar = ColorRect.new()
+	_craft_bar.color = UI.MOSS
+	_craft_bar.position = Vector2(1, 1)
+	_craft_bar.size = Vector2(0, 6)
+	qbg.add_child(_craft_bar)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(390, 470)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	cv.add_child(scroll)
+	_craft_list = VBoxContainer.new()
+	_craft_list.add_theme_constant_override("separation", 4)
+	_craft_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_craft_list)
 	_held_icon = TextureRect.new()
 	_held_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_held_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -134,10 +182,16 @@ func _inv(cell: Dictionary) -> Inventory:
 	return player.inventory if cell.which == "player" else container
 
 
-func open(inv: Inventory = null, title := "", on_close := Callable()) -> void:
+func open(inv: Inventory = null, title := "", on_close := Callable(), at_station: Station = null) -> void:
 	container = inv
 	container_title = title
 	_on_container_close = on_close
+	station = at_station
+	var processing := at_station != null and (at_station.kind == "campfire" or at_station.kind == "furnace")
+	_process_row.visible = processing
+	_chest_grid.columns = 3 if processing else 4
+	_craft_panel.visible = inv == null or not processing and at_station == null
+	_build_recipes()
 	for c in _chest_grid.get_children():
 		c.queue_free()
 	_cells = _cells.filter(func(c: Dictionary) -> bool: return c.which == "player")
@@ -170,6 +224,7 @@ func close() -> void:
 		_on_container_close.call()
 	_on_container_close = Callable()
 	container = null
+	station = null
 	closed.emit()
 
 
@@ -295,7 +350,89 @@ func _hover(cell: Dictionary, on: bool) -> void:
 		_tooltip.visible = false
 
 
+func _workbench_near() -> bool:
+	if station and station.kind == "workbench":
+		return true
+	return player.main.nearby_station("workbench", player.global_position, 4.0) != null
+
+
+func _build_recipes() -> void:
+	for c in _craft_list.get_children():
+		c.queue_free()
+	_recipe_rows.clear()
+	var bench := _workbench_near()
+	_craft_title.text = "Crafting  ·  workbench" if bench else "Crafting  ·  by hand"
+	var sorted := Recipes.CRAFT.duplicate()
+	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var ra := 0 if a.at == "" or bench else 1
+		var rb := 0 if b.at == "" or bench else 1
+		return ra < rb)
+	for r in sorted:
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", UI.box(Color(1, 1, 1, 0.035), 6, Color(1, 1, 1, 0.05), 1, 0, 6))
+		_craft_list.add_child(row)
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 8)
+		row.add_child(h)
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(44, 44)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		h.add_child(icon)
+		var v := VBoxContainer.new()
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_theme_constant_override("separation", 0)
+		h.add_child(v)
+		var name_l := UI.label(Items.display_name(r.out) + ("  x%d" % int(r.n) if int(r.n) > 1 else ""), 17, UI.PAPER, "SemiBold")
+		v.add_child(name_l)
+		var ing := RichTextLabel.new()
+		ing.bbcode_enabled = true
+		ing.fit_content = true
+		ing.scroll_active = false
+		ing.custom_minimum_size = Vector2(230, 0)
+		ing.add_theme_font_override("normal_font", UI.font("Medium"))
+		ing.add_theme_font_size_override("normal_font_size", 13)
+		ing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.add_child(ing)
+		var btn := Button.new()
+		btn.text = "Craft"
+		btn.custom_minimum_size = Vector2(70, 34)
+		btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		btn.add_theme_font_override("font", UI.font("SemiBold"))
+		btn.add_theme_stylebox_override("normal", UI.box(Color(1, 1, 1, 0.07), 5, Color(1, 1, 1, 0.1), 1))
+		btn.add_theme_stylebox_override("hover", UI.box(Color(1, 1, 1, 0.12), 5, UI.LANTERN, 1))
+		btn.add_theme_stylebox_override("disabled", UI.box(Color(0, 0, 0, 0.2), 5))
+		btn.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.25))
+		btn.pressed.connect(func() -> void:
+			if player.queue_craft(r):
+				refresh()
+			else:
+				Sfx.play("ui_error", -8.0))
+		h.add_child(btn)
+		_recipe_rows.append({"r": r, "icon": icon, "ing": ing, "btn": btn, "row": row})
+
+
+func _refresh_recipes() -> void:
+	var bench := _workbench_near()
+	for rr in _recipe_rows:
+		var r: Dictionary = rr.r
+		(rr.icon as TextureRect).texture = icons.get_icon(str(r.out))
+		var parts := PackedStringArray()
+		for id in r.in:
+			var have := player.inventory.count(id)
+			var need := int(r.in[id])
+			parts.append("[color=%s]%s %d/%d[/color]" % ["#cfd8c2" if have >= need else "#d98c6a", Items.display_name(id), have, need])
+		var station_ok: bool = r.at == "" or bench
+		if not station_ok:
+			parts.append("[color=#9a9a90]needs workbench[/color]")
+		(rr.ing as RichTextLabel).text = "  ·  ".join(parts)
+		(rr.btn as Button).disabled = not station_ok or not Recipes.can_craft(r, player.inventory)
+		(rr.row as Control).modulate.a = 1.0 if station_ok else 0.55
+
+
 func refresh() -> void:
+	if _craft_panel.visible:
+		_refresh_recipes()
 	for c in _cells:
 		var inv := _inv(c)
 		if inv == null:
@@ -318,6 +455,12 @@ func refresh() -> void:
 func _process(_dt: float) -> void:
 	if not is_open:
 		return
+	_craft_bar.size.x = 198.0 * player.craft_progress()
+	_craft_queue_label.text = ("Crafting %s  (%d queued)" % [Items.display_name(str(player.craft_queue[0].recipe.out)), player.craft_queue.size()]) if not player.craft_queue.is_empty() else "Nothing queued"
+	if _process_row.visible and station:
+		_process_bar.size.x = (4 * SLOT + 16) * station.process_ratio()
+		if Engine.get_process_frames() % 10 == 0:
+			refresh()
 	var mp := _root.get_local_mouse_position()
 	_held_icon.position = mp - Vector2(28, 28)
 	_tooltip.position = mp + Vector2(18, 18)

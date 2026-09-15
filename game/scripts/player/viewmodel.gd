@@ -36,6 +36,50 @@ const TOOLS := {
 			[1.0, "idle"],
 		],
 	},
+	"stone_pickaxe": {
+		"scale": 1.0, "u_r": 0.5, "u_l": 0.14, "two_hand": true, "alpha_r": 0.25, "alpha_l": -0.2,
+		"idle": {"b": Vector3(0.12, -0.36, -0.24), "d": Vector3(0.15, 0.62, -0.77), "h": Vector3(-0.2, 0.2, -1.0)},
+		"draw_from": {"b": Vector3(0.38, -0.85, 0.02), "d": Vector3(0.6, 0.45, 0.65), "h": Vector3(0, -1, 0)},
+		"draw_time": 0.55, "swing_time": 0.95, "impact": 0.46, "swing_sound": "swing_heavy", "stamina": 6.0,
+		"swing": [
+			[0.0, "idle"],
+			[0.34, {"b": Vector3(0.24, -0.27, -0.4), "d": Vector3(0.1, 0.88, 0.46), "h": Vector3(0.0, 0.46, -0.88), "lean": Vector3(0.01, 0.02, 0.0)}],
+			[0.46, {"b": Vector3(0.05, -0.15, -0.28), "d": Vector3(0.0, -0.3, -0.95), "h": Vector3(0, -1, 0.25), "lean": Vector3(0, -0.02, -0.18)}],
+			[0.62, {"b": Vector3(0.06, -0.22, -0.28), "d": Vector3(0.0, -0.45, -0.89), "h": Vector3(0, -0.9, 0.45), "lean": Vector3(0, -0.03, -0.12)}],
+			[1.0, "idle"],
+		],
+	},
+	"hammer": {
+		"scale": 1.0, "u_r": 0.3, "u_l": -1.0, "two_hand": false, "alpha_r": 0.2,
+		"idle": {"b": Vector3(0.2, -0.36, -0.36), "d": Vector3(-0.1, 0.8, -0.6), "h": Vector3(0, 0, -1)},
+		"draw_from": {"b": Vector3(0.35, -0.75, -0.2), "d": Vector3(0.3, 0.2, 0.9), "h": Vector3(0, 1, 0)},
+		"draw_time": 0.4, "swing_time": 0.5, "impact": 0.4, "swing_sound": "swing_light", "stamina": 1.0,
+		"swing": [
+			[0.0, "idle"],
+			[0.25, {"b": Vector3(0.24, -0.28, -0.28), "d": Vector3(0.0, 0.7, 0.7), "h": Vector3(0, 0.7, -0.7), "lean": Vector3(0, 0, 0.02)}],
+			[0.4, {"b": Vector3(0.14, -0.3, -0.44), "d": Vector3(-0.05, 0.2, -0.98), "h": Vector3(0, -1, 0.2), "lean": Vector3(0, -0.02, -0.06)}],
+			[1.0, "idle"],
+		],
+	},
+	"spear": {
+		"scale": 1.0, "u_r": 0.35, "u_l": 0.62, "two_hand": true, "alpha_r": 0.9, "alpha_l": -0.9,
+		"idle": {"b": Vector3(0.2, -0.36, 0.25), "d": Vector3(-0.08, 0.1, -0.99), "h": Vector3(0, 1, 0)},
+		"draw_from": {"b": Vector3(0.4, -0.8, 0.3), "d": Vector3(0.2, 0.6, -0.8), "h": Vector3(0, 1, 0)},
+		"draw_time": 0.5, "swing_time": 0.6, "impact": 0.35, "swing_sound": "swing_light", "stamina": 4.0,
+		"swing": [
+			[0.0, "idle"],
+			[0.2, {"b": Vector3(0.2, -0.33, 0.4), "d": Vector3(-0.08, 0.08, -0.99), "h": Vector3(0, 1, 0), "lean": Vector3(0, 0, 0.05)}],
+			[0.35, {"b": Vector3(0.14, -0.3, -0.1), "d": Vector3(-0.08, 0.06, -0.99), "h": Vector3(0, 1, 0), "lean": Vector3(0, -0.01, -0.2)}],
+			[1.0, "idle"],
+		],
+	},
+	"bow": {
+		"scale": 1.0, "u_r": 0.5, "u_l": 0.5, "two_hand": false, "left_only": true, "alpha_r": 0.0,
+		"idle": {"b": Vector3(-0.1, -0.62, -0.5), "d": Vector3(0.12, 1.0, -0.05), "h": Vector3(0, 0, -1)},
+		"draw_from": {"b": Vector3(-0.3, -1.0, -0.3), "d": Vector3(0.5, 0.8, 0), "h": Vector3(0, 0, -1)},
+		"draw_time": 0.45, "swing_time": 0.7, "impact": 0.6, "swing_sound": "bow_release", "stamina": 2.0,
+		"swing": [[0.0, "idle"], [1.0, "idle"]],
+	},
 	"knife": {
 		"scale": 1.0, "u_r": 0.28, "u_l": -1.0, "two_hand": false, "alpha_r": 0.0,
 		"idle": {"b": Vector3(0.2, -0.28, -0.36), "d": Vector3(-0.2, 0.35, -0.92), "h": Vector3(0, -1, 0)},
@@ -50,6 +94,13 @@ const TOOLS := {
 		],
 	},
 }
+
+static func rig_for(id: String) -> Dictionary:
+	var key := str(Items.def(id).get("rig", id))
+	if TOOLS.has(key):
+		return TOOLS[key]
+	return {}
+
 
 var player: Player
 var current_id := ""
@@ -122,10 +173,17 @@ func _capture_rest(s: Skeleton3D) -> Dictionary:
 
 # ---------------------------------------------------------------- public API
 
-func equip(id: String) -> void:
+func equip(id: String, instant := false) -> void:
 	if id == current_id and state != "holster":
 		return
 	pending_id = id
+	if instant:
+		# item left the hand (dropped, eaten, broke): no holster animation, it is simply gone
+		if tool_node:
+			tool_node.queue_free()
+			tool_node = null
+		_switch_to_pending()
+		return
 	if tool_node and state != "holster":
 		state = "holster"
 		t = 0.0
@@ -134,12 +192,12 @@ func equip(id: String) -> void:
 
 
 func request_swing() -> void:
-	if state == "idle" and TOOLS.has(current_id) and player.stamina > 2.0 and player.grabbing == null:
+	if state == "idle" and not rig_for(current_id).is_empty() and player.stamina > 2.0 and player.grabbing == null:
 		state = "swing"
 		t = 0.0
 		_hit_done = false
-		player.use_stamina(float(TOOLS[current_id].stamina))
-		Sfx.play(TOOLS[current_id].swing_sound, -7.0, 0.1)
+		player.use_stamina(float(rig_for(current_id).stamina))
+		Sfx.play(rig_for(current_id).swing_sound, -7.0, 0.1)
 
 
 func gesture(kind: String) -> void:
@@ -166,7 +224,7 @@ func _switch_to_pending() -> void:
 		tool_node = null
 	current_id = pending_id
 	tool_info = {}
-	if TOOLS.has(current_id) or Items.def(current_id).has("model"):
+	if not rig_for(current_id).is_empty() or Items.def(current_id).has("model"):
 		tool_node = Items.instance(current_id)
 		add_child(tool_node)
 		for mi in tool_node.find_children("*", "MeshInstance3D", true, false):
@@ -282,7 +340,7 @@ func _analyse(node: Node3D, id: String) -> Dictionary:
 func _process(dt: float) -> void:
 	if player == null or skel_r == null or skel_l == null:
 		return
-	var cfg: Dictionary = TOOLS.get(current_id, {})
+	var cfg: Dictionary = rig_for(current_id)
 	var dur := 0.3
 	match state:
 		"holster":
@@ -359,7 +417,9 @@ func _process(dt: float) -> void:
 			grip_l = 1.0
 	elif tool_node:
 		# carried item (resource, bucket...): hold it in the right hand in front
-		var hold := Transform3D(Basis(Vector3.UP, 0.4), Vector3(0.22, -0.3, -0.42) + off)
+		var eat_t := clampf(player.eat_progress * 1.6, 0.0, 1.0)
+		var hold_pos := Vector3(0.22, -0.3, -0.42).lerp(Vector3(0.03, -0.12, -0.2), eat_t) + Vector3(0, sin(player.eat_progress * 40.0) * 0.006 * eat_t, 0)
+		var hold := Transform3D(Basis(Vector3.UP, 0.4), hold_pos + off)
 		var aabb_c := _node_center(tool_node)
 		tool_node.transform = hold * Transform3D(Basis.IDENTITY, -aabb_c)
 		target_r = _hand_frame(hold.origin + Vector3(0.04, -0.06, 0.1), Vector3(-0.2, 0.3, -1.0), Vector3(-0.3, 1.0, 0.0), true)

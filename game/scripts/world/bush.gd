@@ -34,10 +34,13 @@ static func create(parent: Node, pos: Vector3, scale := 1.0) -> Bush:
 func tool_hit(tool_id: String, point: Vector3, normal: Vector3, _player: Node) -> bool:
 	Sfx.play_at("cut_foliage", point, -2.0, 0.12)
 	Fx.burst(get_tree().current_scene, point, normal, "leaf", 18)
-	if tool_id != "knife" and tool_id != "axe":
+	var tt := Items.tool_type(tool_id)
+	if tt != "knife" and tt != "axe":
 		return false
 	hp -= 1
-	var p := Pickup.spawn(get_tree().current_scene, "fiber", 2 if tool_id == "knife" else 1, point + normal * 0.2)
+	var p := Pickup.spawn(get_tree().current_scene, "fiber", 2 if tt == "knife" else 1, point + normal * 0.2)
+	if randf() < 0.6:
+		Pickup.spawn(get_tree().current_scene, "stick", 1, point + normal * 0.3 + Vector3.UP * 0.2)
 	p.linear_velocity = normal * 1.5 + Vector3.UP
 	var tw := create_tween()
 	tw.tween_property(model, "scale", Vector3.ONE * _base_scale * (0.45 + 0.18 * hp), 0.2).set_trans(Tween.TRANS_BACK)

@@ -45,8 +45,39 @@ func setup(network: TrackNetwork, model_path: String) -> void:
 	if mr:
 		coupler_rear = absf(mr.position.z)
 	_fix_materials(model)
+	call_deferred("_kit_points")
 	_roll = Sfx.loop("rail_roll_loop", self, -80.0, 6.0, 70.0)
 	_squeal = Sfx.loop("brake_squeal_loop", self, -80.0, 6.0, 70.0)
+
+
+## Kit use points: rear coupler (attach a flatcar) and the middle of the vehicle (engine upgrades).
+func _kit_points() -> void:
+	var rear := part("M_CouplerR")
+	var rp := to_local(rear.global_position) if rear else Vector3(0, 0.8, coupler_rear)
+	var it := Interactable.make(self, 0.45, rp + Vector3(0, 0.4, 0))
+	it.prompt = func(p: Node) -> String:
+		if (p as Player).equipped_id == "flatcar_kit" and consist and consist.tail() == self:
+			return "[E] Build and couple a flatcar"
+		return ""
+	it.on_use = func(p: Node) -> void:
+		if (p as Player).equipped_id == "flatcar_kit" and consist and consist.tail() == self:
+			var main := get_tree().current_scene
+			if main.has_method("attach_flatcar") and main.attach_flatcar(consist):
+				(p as Player).inventory.remove_at((p as Player).selected_slot, 1)
+	var mid := Interactable.make(self, 0.7, Vector3(0, 1.4, 0))
+	mid.prompt = func(p: Node) -> String:
+		var eq := (p as Player).equipped_id
+		if eq == "steam_kit" and self is Handcar:
+			return "[E] Install the steam engine (replaces the handcar)"
+		if eq == "electric_kit" and (self is Handcar or self is SteamLoco):
+			return "[E] Install the electric drive (replaces this engine)"
+		return ""
+	mid.on_use = func(p: Node) -> void:
+		var eq := (p as Player).equipped_id
+		var main := get_tree().current_scene
+		if (eq == "steam_kit" and self is Handcar) or (eq == "electric_kit" and (self is Handcar or self is SteamLoco)):
+			if main.has_method("upgrade_engine") and main.upgrade_engine(self, eq):
+				(p as Player).inventory.remove_at((p as Player).selected_slot, 1)
 
 
 static var _glass: StandardMaterial3D

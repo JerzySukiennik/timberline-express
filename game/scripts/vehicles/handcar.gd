@@ -4,8 +4,8 @@ extends RailVehicle
 
 const CYCLE := 3.2        # metres travelled per full pump cycle
 const BEAM_AMP := 0.32    # radians
-const PUMP_GAIN := 0.5
-const MAX_PUMP_SPEED := 9.0
+const PUMP_FORCE := 1400.0
+const MAX_PUMP_SPEED := 8.5
 
 var direction := 1.0
 var brake: Lever
@@ -42,7 +42,7 @@ func setup(network: TrackNetwork, _path := "") -> void:
 		var front: bool = m.ends_with("F")
 		for side in [-0.42, 0.0, 0.42]:
 			var it := Interactable.make(self, 0.16, to_local(mk.global_position) + Vector3(side, 0, 0))
-			it.prompt = func(_p: Node) -> String: return "[Hold LMB + move mouse up/down] Pump  ·  %d km/h" % int(absf(consist.v) * 3.6)
+			it.prompt = func(_p: Node) -> String: return "[Hold LMB] Grab pump — move the mouse or hold W  ·  %d km/h" % int(absf(consist.v) * 3.6)
 			it.grab_drag = func(p: Node, rel: Vector2) -> void: _pump(p, rel, front)
 			it.grab_start = func(p: Node) -> void: pumping_player = p
 			it.grab_end = func(_p: Node) -> void: pumping_player = null
@@ -61,28 +61,36 @@ func setup(network: TrackNetwork, _path := "") -> void:
 
 
 func _phase() -> float:
-	return travel * direction / CYCLE * TAU
+	return travel / CYCLE * TAU
 
 
-func _pump(p: Node, rel: Vector2, front: bool) -> void:
-	var c := cos(_phase())
-	if absf(c) < 0.35:
-		c = 0.35 * (signf(c) if c != 0.0 else 1.0)
-	var handle_up := -rel.y
-	var dtheta := handle_up if front else -handle_up
-	var rate := dtheta / maxf(get_physics_process_delta_time(), 0.001)
-	var push := clampf(PUMP_GAIN * rate * c, -950.0, 950.0)
-	if signf(push) == direction or push == 0.0:
-		push *= clampf(1.0 - absf(consist.v) / MAX_PUMP_SPEED, 0.0, 1.0)
-	_pump_force = lerpf(_pump_force, push * direction, 0.6)
-	_pump_rate = absf(rate)
+## Any up/down stroke of the handle pushes the car in the selected direction; faster strokes push harder.
+func _pump(p: Node, rel: Vector2, _front: bool) -> void:
+	var stroke := absf(rel.y) + absf(rel.x) * 0.3
+	add_pump(p, clampf(stroke / 18.0, 0.0, 1.6))
+
+
+func add_pump(p: Node, strength: float) -> void:
+	if strength <= 0.0:
+		return
+	if brake.value > 0.0:
+		brake.set_value(0.0)
+	var push := PUMP_FORCE * strength * clampf(1.0 - absf(consist.v) / MAX_PUMP_SPEED, 0.08, 1.0)
+	_pump_force = maxf(_pump_force, push)
+	_pump_rate = strength
 	if p and "stamina" in p:
-		p.stamina = maxf(0.0, p.stamina - absf(rel.y) * 0.012)
+		p.stamina = maxf(0.0, p.stamina - strength * 0.25)
+
+
+func _physics_process(_dt: float) -> void:
+	# holding W while on the pump handle pumps at a steady pace
+	if pumping_player and is_instance_valid(pumping_player) and Input.is_action_pressed("move_forward") and (pumping_player as Player).input_enabled:
+		add_pump(pumping_player, 0.8)
 
 
 func drive_force(_v: float, _dt: float) -> float:
-	var f := _pump_force
-	_pump_force *= 0.82
+	var f := _pump_force * direction
+	_pump_force *= 0.9
 	return f
 
 

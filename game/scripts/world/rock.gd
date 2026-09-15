@@ -10,14 +10,16 @@ static var _outer: StandardMaterial3D
 static var _inner: StandardMaterial3D
 
 var level := 0
+var ore := ""                # "", "iron_ore", "copper_ore", "coal"
 var key := "boulder_l0"
 var hp := 9.0
 var _wobble := 0.0
 var _model: Node3D
 
 
-static func create(parent: Node, xf: Transform3D, lvl := 0, piece := "boulder_l0") -> MineRock:
+static func create(parent: Node, xf: Transform3D, lvl := 0, piece := "boulder_l0", ore_kind := "") -> MineRock:
 	var r := MineRock.new()
+	r.ore = ore_kind
 	r.level = lvl
 	r.key = piece
 	r.hp = HP[lvl]
@@ -41,27 +43,52 @@ static func meta() -> Dictionary:
 	return _meta
 
 
+static var _ore_mats := {}
+
+
+static func ore_material(kind: String) -> StandardMaterial3D:
+	if kind == "":
+		return materials()[0]
+	if not _ore_mats.has(kind):
+		var m := (materials()[0] as StandardMaterial3D).duplicate() as StandardMaterial3D
+		m.albedo_color = {"iron_ore": Color(0.85, 0.55, 0.42), "copper_ore": Color(0.55, 0.78, 0.66), "coal": Color(0.32, 0.31, 0.31)}[kind]
+		_ore_mats[kind] = m
+	return _ore_mats[kind]
+
+
 static func materials() -> Array:
 	if _outer == null:
+		# triplanar in object space: decimated rock meshes have torn UVs, this ignores them and sticks to the rock
 		_outer = StandardMaterial3D.new()
-		_outer.albedo_texture = load("res://assets/textures/rock/boulder_01_diff_1k.jpg")
+		_outer.albedo_texture = load("res://assets/textures/ground/rockface_diff.jpg")
 		_outer.normal_enabled = true
-		_outer.normal_texture = load("res://assets/textures/rock/boulder_01_nor_gl_1k.jpg")
-		_outer.roughness_texture = load("res://assets/textures/rock/boulder_01_arm_1k.jpg")
-		_outer.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
-		_outer.ao_enabled = true
-		_outer.ao_texture = _outer.roughness_texture
-		_outer.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
-		_outer.albedo_color = Color(0.72, 0.7, 0.68)
+		_outer.normal_texture = load("res://assets/textures/ground/rockface_nor.jpg")
+		_outer.roughness = 0.9
+		_outer.uv1_triplanar = true
+		_outer.uv1_triplanar_sharpness = 4.0
+		_outer.uv1_scale = Vector3(0.9, 0.9, 0.9)
+		_outer.albedo_color = Color(0.78, 0.76, 0.72)
 		_inner = StandardMaterial3D.new()
 		_inner.albedo_texture = load("res://assets/textures/ground/rockface_diff.jpg")
 		_inner.normal_enabled = true
 		_inner.normal_texture = load("res://assets/textures/ground/rockface_nor.jpg")
 		_inner.uv1_triplanar = true
 		_inner.uv1_scale = Vector3(1.6, 1.6, 1.6)
-		_inner.albedo_color = Color(0.75, 0.72, 0.68)
+		_inner.albedo_color = Color(0.62, 0.6, 0.57)
 		_inner.roughness = 0.95
 	return [_outer, _inner]
+
+
+static var _moss_rock: StandardMaterial3D
+
+
+## Shared material for decorative moss rocks (same UV problem).
+static func moss_material() -> StandardMaterial3D:
+	if _moss_rock == null:
+		_moss_rock = (materials()[0] as StandardMaterial3D).duplicate() as StandardMaterial3D
+		_moss_rock.albedo_color = Color(0.66, 0.68, 0.6)
+		_moss_rock.uv1_scale = Vector3(0.45, 0.45, 0.45)
+	return _moss_rock
 
 
 func _build() -> void:
@@ -74,7 +101,7 @@ func _build() -> void:
 		for si in m.mesh.get_surface_count():
 			var src := m.mesh.surface_get_material(si)
 			var inner := src != null and src.resource_name.contains("Inner")
-			m.set_surface_override_material(si, mats[1] if inner else mats[0])
+			m.set_surface_override_material(si, mats[1] if inner else ore_material(ore))
 		var cs := CollisionShape3D.new()
 		cs.shape = m.mesh.create_convex_shape(true, true)
 		cs.transform = Terrain._rel(_model, m)
@@ -82,9 +109,9 @@ func _build() -> void:
 
 
 func tool_hit(tool_id: String, point: Vector3, normal: Vector3, player: Node) -> bool:
-	var dmg := {"pickaxe": 1.0, "axe": 0.25, "knife": 0.0}.get(tool_id, 0.0) as float
-	Sfx.play_at("hit_rock", point, -1.0 if dmg >= 1.0 else -6.0, 0.12)
-	Fx.burst(get_tree().current_scene, point, normal, "rock", 10 if dmg >= 1.0 else 4)
+	var dmg: float = {"pickaxe": 1.0, "axe": 0.25, "hammer": 0.2}.get(Items.tool_type(tool_id), 0.0) * Items.tool_power(tool_id)
+	Sfx.play_at("hit_rock", point, -1.0 if dmg >= 0.5 else -6.0, 0.12)
+	Fx.burst(get_tree().current_scene, point, normal, "rock", 10 if dmg >= 0.5 else 4)
 	if dmg <= 0.0:
 		return false
 	Fx.scar(self, point, normal, 0.18 + 0.05 * randf())
@@ -114,7 +141,7 @@ func _break(normal: Vector3) -> void:
 			var off: Array = pieces[name].offset
 			var local := Vector3(off[0], off[1], off[2])
 			var xf := Transform3D(global_basis, global_transform * local)
-			var chunk := MineRock.create(scene, xf, level + 1, name)
+			var chunk := MineRock.create(scene, xf, level + 1, name, ore)
 			var out := (xf.origin - global_position).normalized()
 			chunk.linear_velocity = linear_velocity + (out + Vector3.UP * 0.5) * randf_range(1.0, 2.2) - normal * 0.8
 			chunk.angular_velocity = Vector3(randf_range(-2, 2), randf_range(-2, 2), randf_range(-2, 2))
@@ -122,7 +149,10 @@ func _break(normal: Vector3) -> void:
 		for i in randi_range(2, 3):
 			var p := Pickup.spawn(scene, "stone", 1, global_position + Vector3(randf_range(-0.15, 0.15), 0.25 + i * 0.1, randf_range(-0.15, 0.15)))
 			p.linear_velocity = Vector3(randf_range(-1.5, 1.5), 2.5, randf_range(-1.5, 1.5))
-		if randf() < 0.5:
+		if ore != "":
+			for k in randi_range(1, 2):
+				Pickup.spawn(scene, ore, 1, global_position + Vector3(randf_range(-0.1, 0.1), 0.45 + k * 0.1, randf_range(-0.1, 0.1)))
+		elif randf() < 0.15:
 			Pickup.spawn(scene, "coal", 1, global_position + Vector3(0, 0.4, 0))
 	queue_free()
 

@@ -2,7 +2,7 @@
 extends Node3D
 
 var network: TrackNetwork
-var terrain: Terrain
+var terrain: Node3D
 var vehicles: VehicleSystem
 var player: Player
 var hud: Hud
@@ -15,6 +15,10 @@ var steam: SteamLoco
 var tender: Tender
 var electric: ElectricLoco
 var spawn_point := Vector3(-30, 0, 39)
+var yard_mode := true
+var world: ChunkWorld
+var gen: WorldGen
+var world_seed := 0
 var infinite_stamina := false
 var menu_open := false
 var sun: DirectionalLight3D
@@ -24,35 +28,34 @@ var _music_timer := 40.0
 
 func _ready() -> void:
 	randomize()
+	yard_mode = "--yard" in OS.get_cmdline_user_args() or "--autotest" in OS.get_cmdline_user_args() and not "--world" in OS.get_cmdline_user_args()
 	_environment()
 	network = TrackNetwork.new()
 	network.name = "Track"
 	add_child(network)
-	network.build_layout()
-	network.build_meshes()
-	terrain = Terrain.new()
-	terrain.name = "Terrain"
-	add_child(terrain)
-	terrain.build(network)
-	spawn_point.y = terrain.height_at(spawn_point.x, spawn_point.z) + 0.1
 	vehicles = VehicleSystem.new()
 	vehicles.name = "Vehicles"
 	vehicles.net = network
 	add_child(vehicles)
-	_vehicles()
-	for n in network.switches:
-		Props.switch_stand(self, network, n, vehicles)
-	for d in network.dead_ends:
-		Props.buffer_stop(self, d)
-	_props()
-	_samples()
-	terrain.scatter([Vector3(-12, 40, 34), Vector3(-2, 20, 30), Vector3(0, 0, 14)])
 	icons = IconBaker.new()
 	add_child(icons)
 	Items.icons = icons
+	if yard_mode:
+		_build_yard()
+	else:
+		_build_world()
 	_player()
 	_ui()
 	_ambience()
+	grass_field = GrassField.new()
+	grass_field.world = terrain
+	grass_field.focus = player
+	add_child(grass_field)
+	apply_quality(Controls.quality)
+	if world:
+		world.focus = player
+		world.extra_focus = [handcar]
+		_begin_loading()
 	if "--autotest" in OS.get_cmdline_user_args():
 		var at: Node = load("res://scripts/autotest.gd").new()
 		at.set("main", self)
@@ -61,7 +64,203 @@ func _ready() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+func _build_yard() -> void:
+	network.build_layout()
+	network.build_meshes()
+	terrain = Terrain.new()
+	terrain.name = "Terrain"
+	add_child(terrain)
+	terrain.build(network)
+	spawn_point.y = terrain.height_at(spawn_point.x, spawn_point.z) + 0.1
+	_vehicles()
+	for n in network.switches:
+		Props.switch_stand(self, network, n, vehicles)
+	for d in network.dead_ends:
+		Props.buffer_stop(self, d)
+	_props()
+	_samples()
+	terrain.scatter([Vector3(-12, 40, 34), Vector3(-2, 20, 30), Vector3(0, 0, 14)])
+
+
+func _build_world() -> void:
+	world_seed = randi() % 1000000 if not "--seed" in str(OS.get_cmdline_user_args()) else 424242
+	gen = WorldGen.new(world_seed)
+	world = ChunkWorld.new()
+	world.name = "World"
+	add_child(world)
+	world.setup(gen, network)
+	terrain = world
+	var start := world.tracks.start_segment()
+	network.switch_changed.connect(_on_switch_changed)
+	handcar = Handcar.new()
+	add_child(handcar)
+	handcar.setup(network)
+	flatcar = Flatcar.new()
+	add_child(flatcar)
+	flatcar.setup(network)
+	handcar.place(network.cursor_at(start, 60.0, false))
+	vehicles.add([handcar, flatcar])
+	handcar.brake.set_value(1.0)
+	spawn_point = flatcar.global_transform * Vector3(0.6, 1.0, 1.2)
+	_stands_timer = 0.0
+
+
+var _stands := {}
+var _stands_timer := 0.0
+
+
+func _update_switch_stands() -> void:
+	for n in world.tracks.branch_nodes:
+		if _stands.has(n.id):
+			continue
+		if n.links.size() < 3 or (n.links[0] as Dictionary).is_empty() or (n.links[1] as Dictionary).is_empty() or (n.links[2] as Dictionary).is_empty():
+			continue
+		if Vector2(n.pos.x - player.global_position.x, n.pos.z - player.global_position.z).length() > 450.0:
+			continue
+		_stands[n.id] = Props.switch_stand(self, network, n, vehicles)
+
+
+## Couples a fresh flatcar behind the consist's tail.
+func attach_flatcar(c: Consist) -> bool:
+	var tail := c.tail()
+	var probe := tail.center_cursor()
+	if probe.move(-(tail.coupler_rear + 3.3 + 0.05), false) != 0.0:
+		toast("No room behind the train")
+		return false
+	var f := Flatcar.new()
+	add_child(f)
+	f.setup(network)
+	c.vehicles.append(f)
+	f.consist = c
+	f.place(probe)
+	Sfx.play_at("coupling", f.global_position, 0.0)
+	toast("Flatcar coupled")
+	return true
+
+
+## Swaps the lead engine of a consist for a steam loco (+tender) or an electric loco, keeping the rest of the train.
+func upgrade_engine(old: RailVehicle, kit: String) -> bool:
+	var c := old.consist
+	if absf(c.v) > 0.5:
+		toast("Stop the train first")
+		return false
+	var center := old.center_cursor()
+	var new_list: Array = []
+	if kit == "steam_kit":
+		var s := SteamLoco.new()
+		add_child(s)
+		s.setup(network)
+		var t := Tender.new()
+		add_child(t)
+		t.setup(network)
+		t.water = 0.0
+		s.tender = t
+		new_list = [s, t]
+		steam = s
+		tender = t
+	else:
+		var e := ElectricLoco.new()
+		add_child(e)
+		e.setup(network)
+		e.battery = 6.0
+		new_list = [e]
+		electric = e
+	var rest: Array = []
+	for v in c.vehicles:
+		if v != old and not (old is SteamLoco and v == (old as SteamLoco).tender):
+			rest.append(v)
+	for rider in [player]:
+		if rider.riding == old:
+			rider.riding = null
+	if old is SteamLoco and (old as SteamLoco).tender:
+		(old as SteamLoco).tender.queue_free()
+	old.queue_free()
+	vehicles.consists.erase(c)
+	(new_list[0] as RailVehicle).place(center)
+	var nc := vehicles.add(new_list + rest)
+	if handcar == old:
+		handcar = null
+	if world:
+		world.extra_focus = [new_list[0]]
+	Sfx.play_at("craft_metal", center.position(), 2.0)
+	toast("Engine installed")
+	return true
+
+
+func _on_switch_changed(_n: TrackNetwork.TrackNode) -> void:
+	pass
+
+
+var _loading_layer: CanvasLayer
+var loading := false
+
+
+func _begin_loading() -> void:
+	loading = true
+	player.input_enabled = false
+	player.set_physics_process(false)
+	vehicles.set_physics_process(false)
+	_loading_layer = CanvasLayer.new()
+	_loading_layer.layer = 20
+	var bg := ColorRect.new()
+	bg.color = Color(0.05, 0.06, 0.055)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_loading_layer.add_child(bg)
+	var l := UI.label("Laying track through the forest…", 30, UI.PAPER, "SemiBold")
+	l.set_anchors_preset(Control.PRESET_CENTER)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UI.place(l, Control.PRESET_CENTER, Vector2(-400, -20), Vector2(800, 40))
+	_loading_layer.add_child(l)
+	add_child(_loading_layer)
+
+
+func _check_loaded() -> void:
+	var c := world.cell(player.global_position)
+	for dz in range(-2, 3):
+		for dx in range(-2, 3):
+			var ch = world.chunks.get(c + Vector2i(dx, dz))
+			if ch == null or ch.lod != 0:
+				return
+	loading = false
+	_loading_layer.queue_free()
+	player.set_physics_process(true)
+	vehicles.set_physics_process(true)
+	player.input_enabled = not menu_open
+	player.global_position = spawn_point
+	player.velocity = Vector3.ZERO
+
+
 var environment: Environment
+var _post_mat: ShaderMaterial
+var grass_field: GrassField
+
+const QUALITY := {
+	"low": {"ssao": false, "ssao_q": 0, "volumetric": false, "glow": false, "rays": false, "splits": 2, "shadow_dist": 60.0, "grass": 0.0, "scale": 0.7, "taa": false},
+	"medium": {"ssao": false, "ssao_q": 0, "volumetric": false, "glow": true, "rays": true, "splits": 2, "shadow_dist": 80.0, "grass": 0.6, "scale": 0.85, "taa": true},
+	"high": {"ssao": false, "ssao_q": 0, "volumetric": false, "glow": true, "rays": true, "splits": 4, "shadow_dist": 100.0, "grass": 1.0, "scale": 1.0, "taa": true},
+	"ultra": {"ssao": true, "ssao_q": 2, "volumetric": true, "glow": true, "rays": true, "splits": 4, "shadow_dist": 130.0, "grass": 1.3, "scale": 1.0, "taa": true},
+}
+
+
+func apply_quality(preset: String) -> void:
+	var q: Dictionary = QUALITY.get(preset, QUALITY.high)
+	environment.ssao_enabled = q.ssao
+	RenderingServer.environment_set_ssao_quality(q.ssao_q, true, 0.5, 2, 50.0, 300.0)
+	environment.volumetric_fog_enabled = q.volumetric
+	environment.glow_enabled = q.glow
+	if _post_mat:
+		_post_mat.set_shader_parameter("rays_on", q.rays)
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if q.splits == 4 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_max_distance = q.shadow_dist
+	var vp := get_viewport()
+	vp.scaling_3d_scale = q.scale
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2 if q.scale < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
+	vp.use_taa = q.taa and q.scale >= 1.0
+	if grass_field:
+		grass_field.visible = q.grass > 0.0
+		grass_field.spacing = 0.42 / sqrt(maxf(q.grass, 0.1))
+		grass_field._center = Vector2(INF, INF)
+	Controls.quality = preset
 
 
 ## Runtime quality switches (used by the perf autotest to find what costs frames).
@@ -71,18 +270,31 @@ func set_quality(key: String, on: bool) -> void:
 			environment.volumetric_fog_enabled = on
 		"ssao":
 			environment.ssao_enabled = on
+		"postfx":
+			($PostFX as CanvasLayer).visible = on
+		"grass":
+			if grass_field:
+				grass_field.visible = on
 		"glow":
 			environment.glow_enabled = on
 		"shadows":
 			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if on else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 			sun.directional_shadow_max_distance = 120.0 if on else 60.0
-		"trees", "plants":
+		"trees", "plants", "chunk_grass", "ferns", "tree_shadows_w":
+			if world:
+				var tag: String = {"trees": "trees", "plants": "ferns", "chunk_grass": "chunk_grass", "ferns": "ferns", "tree_shadows_w": "tree_shadows"}[key]
+				for mmi in world.find_children("*", "MultiMeshInstance3D", true, false):
+					if mmi.get_meta("kind", "") == tag:
+						mmi.visible = on
+				return
 			for c in terrain.get_children():
 				if c is MultiMeshInstance3D:
 					var is_tree := (c as MultiMeshInstance3D).visibility_range_end > 100.0
 					if (key == "trees") == is_tree:
 						c.visible = on
 		"tree_shadows":
+			if world:
+				return
 			for c in terrain.get_children():
 				if c is MultiMeshInstance3D and (c as MultiMeshInstance3D).visibility_range_end > 100.0:
 					(c as MultiMeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -95,54 +307,82 @@ func _environment() -> void:
 	environment = env
 	var sky := Sky.new()
 	var pano := PanoramaSkyMaterial.new()
-	pano.panorama = load("res://assets/textures/sky/kloofendal_misty_morning_puresky_2k.hdr")
-	pano.energy_multiplier = 1.0
+	pano.panorama = load("res://assets/textures/sky/qwantani_morning_puresky_2k.hdr")
+	pano.energy_multiplier = 1.15
 	sky.sky_material = pano
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
-	env.sky_rotation = Vector3(0, deg_to_rad(40), 0)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_sky_contribution = 1.0
-	env.ambient_light_energy = 0.85
+	env.ambient_light_sky_contribution = 0.85
+	env.ambient_light_energy = 0.75
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	env.tonemap_exposure = 1.05
-	env.ssao_enabled = false
-	env.ssao_radius = 1.2
-	env.ssao_intensity = 1.6
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_exposure = 0.9
+	env.tonemap_white = 6.0
+	env.ssao_enabled = true
+	env.ssao_radius = 1.4
+	env.ssao_intensity = 2.2
+	env.ssao_power = 1.8
+	env.ssao_light_affect = 0.15
 	env.glow_enabled = true
-	env.glow_intensity = 0.35
-	env.glow_bloom = 0.04
+	env.glow_intensity = 0.5
+	env.glow_strength = 1.05
+	env.glow_bloom = 0.06
+	env.glow_hdr_threshold = 0.95
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	env.set_glow_level(2, 1.0)
+	env.set_glow_level(3, 0.8)
+	env.set_glow_level(4, 0.6)
+	env.set_glow_level(5, 0.35)
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	env.fog_light_color = Color(0.66, 0.7, 0.72)
-	env.fog_density = 0.0011
-	env.fog_sky_affect = 0.35
-	env.fog_aerial_perspective = 0.35
+	env.fog_light_color = Color(0.62, 0.74, 0.88)
+	env.fog_sun_scatter = 0.12
+	env.fog_density = 0.00085
+	env.fog_sky_affect = 0.12
+	env.fog_aerial_perspective = 0.85
 	env.volumetric_fog_enabled = true
-	env.volumetric_fog_density = 0.0035
-	env.volumetric_fog_albedo = Color(0.85, 0.87, 0.88)
-	env.volumetric_fog_anisotropy = 0.55
-	env.volumetric_fog_length = 64.0
+	env.volumetric_fog_density = 0.0028
+	env.volumetric_fog_albedo = Color(0.95, 0.93, 0.88)
+	env.volumetric_fog_anisotropy = 0.82
+	env.volumetric_fog_length = 110.0
+	env.volumetric_fog_detail_spread = 2.0
 	env.volumetric_fog_sky_affect = 0.0
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 0.92
-	env.adjustment_contrast = 1.04
+	env.adjustment_brightness = 1.0
+	env.adjustment_contrast = 1.06
+	env.adjustment_saturation = 1.1
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-24, 145, 0)
-	sun.light_color = Color(1.0, 0.9, 0.78)
-	sun.light_energy = 2.3
-	sun.light_volumetric_fog_energy = 1.6
+	sun.rotation_degrees = Vector3(-30, 140, 0)
+	sun.light_color = Color(1.0, 0.86, 0.66)
+	sun.light_energy = 3.1
+	sun.light_angular_distance = 0.6
+	sun.light_volumetric_fog_energy = 1.4
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = 90.0
-	sun.shadow_bias = 0.04
-	sun.shadow_blur = 1.2
+	sun.directional_shadow_max_distance = 110.0
+	sun.directional_shadow_blend_splits = true
+	sun.shadow_bias = 0.03
+	sun.shadow_normal_bias = 1.2
+	sun.shadow_blur = 0.8
 	add_child(sun)
+	_post_mat = null
+	var post := CanvasLayer.new()
+	post.name = "PostFX"
+	post.layer = 1
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pm := ShaderMaterial.new()
+	pm.shader = load("res://shaders/postfx.gdshader")
+	rect.material = pm
+	_post_mat = pm
+	post.add_child(rect)
+	add_child(post)
 
 
 func _siding_cursor(i: int, from_end: float) -> TrackNetwork.Cursor:
@@ -224,19 +464,69 @@ func _player() -> void:
 	player.main = self
 	add_child(player)
 	player.global_position = spawn_point
-	player.look_at_point(handcar.global_position + Vector3.UP * 1.0)
-	for id in ["pickaxe", "axe", "knife", "bucket", "jerrycan"]:
-		player.inventory.add(id, 1)
-	player.inventory.add("coal", 6)
-	player.select_slot(6)
+	player.look_at_point(handcar.global_position + Vector3.UP * 1.0 if yard_mode else handcar.global_transform * Vector3(0, 1.4, -6.0))
+	if yard_mode:
+		for id in ["pickaxe", "axe", "knife", "bucket", "jerrycan"]:
+			player.inventory.add(id, 1)
+		player.inventory.add("coal", 6)
+		player.select_slot(6)
+	else:
+		player.inventory.add("berries", 5)
+		player.select_slot(8)
+
+
+func _on_player_died(cause: String) -> void:
+	player.input_enabled = false
+	player._end_grab()
+	player.set_physics_process(false)
+	hud.show_death(cause)
+	var head := player.head
+	var tw := create_tween()
+	tw.tween_property(head, "position:y", 0.25, 1.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(head, "rotation:z", 1.3, 1.2)
+	tw.tween_interval(2.4)
+	tw.tween_callback(_respawn)
+
+
+func respawn_point() -> Vector3:
+	if not beds.is_empty():
+		for b in beds:
+			if is_instance_valid(b):
+				return (b as Node3D).global_transform * Vector3(0.9, 0.2, 0)
+	if world and handcar:
+		return handcar.global_transform * Vector3(0.5, 1.0, 0.6)
+	return spawn_point
+
+
+var beds: Array = []
+
+
+func _respawn() -> void:
+	if not player.inventory.slots.all(func(x: Dictionary) -> bool: return x.is_empty()):
+		DeathBag.spawn(self, player.global_position + Vector3(0, 0.05, 0), player.inventory)
+	player.head.rotation.z = 0.0
+	player.head.position.y = Player.EYE
+	player.global_position = respawn_point()
+	player.velocity = Vector3.ZERO
+	player.riding = null
+	player.survival.revive()
+	player.stamina = 100.0
+	player.set_physics_process(true)
+	player.input_enabled = not menu_open
+	hud.hide_death()
 
 
 func _ui() -> void:
+	player.survival.died.connect(_on_player_died)
 	hud = Hud.new()
 	hud.player = player
 	hud.icons = icons
 	add_child(hud)
 	player.slot_changed.connect(func(_i: int) -> void: hud.refresh())
+	player.crafted.connect(func(id: String) -> void:
+		hud.toast("Crafted " + Items.display_name(id))
+		if inventory_ui.is_open:
+			inventory_ui.refresh())
 	player.inventory.changed.connect(func() -> void:
 		hud.refresh()
 		if inventory_ui and inventory_ui.is_open:
@@ -261,6 +551,19 @@ func _ui() -> void:
 	_build_menu()
 
 
+var build_menu: BuildMenu
+
+
+func open_build_menu() -> void:
+	if build_menu == null:
+		build_menu = BuildMenu.new()
+		build_menu.player = player
+		add_child(build_menu)
+		build_menu.closed.connect(func() -> void: player.input_enabled = not menu_open)
+	player.input_enabled = false
+	build_menu.open()
+
+
 func toggle_inventory() -> void:
 	if inventory_ui.is_open:
 		inventory_ui.close()
@@ -268,10 +571,20 @@ func toggle_inventory() -> void:
 		open_container(null, "")
 
 
-func open_container(inv: Inventory, title: String, on_close := Callable()) -> void:
+var stations: Array = []
+
+
+func nearby_station(kind: String, pos: Vector3, radius: float) -> Station:
+	for s in stations:
+		if is_instance_valid(s) and (s as Station).kind == kind and (s as Station).global_position.distance_to(pos) < radius:
+			return s
+	return null
+
+
+func open_container(inv: Inventory, title: String, on_close := Callable(), station: Station = null) -> void:
 	player.input_enabled = false
 	player._end_grab()
-	inventory_ui.open(inv, title, on_close)
+	inventory_ui.open(inv, title, on_close, station)
 
 
 func toast(text: String) -> void:
@@ -297,6 +610,24 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(dt: float) -> void:
+	if _post_mat and player:
+		var cam := player.camera
+		var sun_dir := sun.global_basis.z
+		var sun_pos := cam.global_position + sun_dir * 1000.0
+		var vis := 0.0
+		if not cam.is_position_behind(sun_pos):
+			var sp := cam.unproject_position(sun_pos)
+			var vs := get_viewport().get_visible_rect().size
+			_post_mat.set_shader_parameter("sun_uv", sp / vs)
+			vis = clampf(1.0 - (sp / vs - Vector2(0.5, 0.5)).length() * 1.1, 0.0, 1.0) * clampf(sun_dir.dot(-cam.global_basis.z) * 2.0, 0.0, 1.0)
+		_post_mat.set_shader_parameter("sun_visible", vis)
+	if world:
+		if loading:
+			_check_loaded()
+		_stands_timer -= dt
+		if _stands_timer <= 0.0:
+			_stands_timer = 1.0
+			_update_switch_stands()
 	if infinite_stamina:
 		player.stamina = 100.0
 		player.exhausted = false
@@ -343,6 +674,17 @@ func _build_menu() -> void:
 		Controls.save()))
 	col.add_child(_slider("Volume", 0.0, 1.0, db_to_linear(AudioServer.get_bus_volume_db(0)), func(v: float) -> void:
 		AudioServer.set_bus_volume_db(0, linear_to_db(maxf(v, 0.0001)))))
+	var qrow := HBoxContainer.new()
+	qrow.add_theme_constant_override("separation", 6)
+	col.add_child(UI.label("Graphics quality", 16, UI.DIM, "SemiBold"))
+	col.add_child(qrow)
+	for preset in ["low", "medium", "high", "ultra"]:
+		var b := _menu_button(preset.capitalize())
+		b.custom_minimum_size = Vector2(90, 40)
+		b.pressed.connect(func() -> void:
+			apply_quality(preset)
+			Controls.save())
+		qrow.add_child(b)
 	var quit := _menu_button("Quit to desktop")
 	quit.pressed.connect(func() -> void: get_tree().quit())
 	col.add_child(quit)

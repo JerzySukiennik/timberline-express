@@ -1,0 +1,15 @@
+U.S. Government works (National Park Service, U.S. Fish & Wildlife Service) - public domain
+verified 2026-09-15.
+
+17 U.S.C. 105: copyright does not protect works prepared by U.S. Government employees as part
+of their official duties. NPS copyright page (https://www.nps.gov/aboutus/disclaimer.htm):
+material created by the National Park Service and presented on its website, unless otherwise
+indicated, is generally considered in the public domain. Acknowledgement of NPS is appreciated.
+For commercial republication, include a notice such as "No claim to original U.S. Government works."
+
+Files from these sources:
+- Yellowstone National Park Sound Library, https://www.nps.gov/yell/learn/photosmultimedia/soundlibrary.htm
+  (elk: NPS/Neal Herbert; grizzly vocalizations: NPS/Dan Bergum; grizzly roar and wolves:
+  "NPS & MSU Acoustic Atlas/Jennifer Jerrett" - Wikimedia Commons hosts the same series as PD-USGov)
+- "Wolf howls.ogg" (Wikimedia Commons, {{PD-USGov-FWS}}, originally http://www.fws.gov/video/sound.htm)
+- "Bear Growls" by U.S. Fish & Wildlife Service, packaged by AntumDeluge on OpenGameArt (CC0)

@@ -97,6 +97,31 @@ def tip(mat):
             sprite_quad(random.choice("AB"), (side*0.01, y), ang, s, z, mat)
     z += 0.001; sprite_quad("A", (0,1.5), 0, 0.5, z, mat)
 
+def pine_mat():
+    m = bpy.data.materials.new("pine_twig")
+    m.use_nodes = True
+    nt = m.node_tree; nt.nodes.clear()
+    o = nt.nodes.new("ShaderNodeOutputMaterial"); em = nt.nodes.new("ShaderNodeEmission"); tr = nt.nodes.new("ShaderNodeBsdfTransparent"); mix = nt.nodes.new("ShaderNodeMixShader")
+    tc = nt.nodes.new("ShaderNodeTexImage"); tc.image = bpy.data.images.load(TW + "pine_tree_01_twig_diff_2k.jpg")
+    ta = nt.nodes.new("ShaderNodeTexImage"); ta.image = bpy.data.images.load(TW + "pine_tree_01_twig_alpha_2k.png"); ta.image.colorspace_settings.name = "Non-Color"
+    uv = nt.nodes.new("ShaderNodeUVMap")
+    nt.links.new(uv.outputs[0], tc.inputs[0]); nt.links.new(uv.outputs[0], ta.inputs[0])
+    nt.links.new(tc.outputs[0], em.inputs[0]); nt.links.new(ta.outputs[0], mix.inputs[0])
+    nt.links.new(tr.outputs[0], mix.inputs[1]); nt.links.new(em.outputs[0], mix.inputs[2]); nt.links.new(mix.outputs[0], o.inputs[0])
+    m.surface_render_method = "BLENDED"
+    return m
+
+def pine_tuft(_mat):
+    m = pine_mat()
+    SPR["P1"] = (9,12,54,112); SPR["P2"] = (167,88,238,132)
+    z = 0.0
+    for i in range(46):
+        a = random.uniform(0, math.tau)
+        L = random.uniform(0.55, 0.95)
+        z += 0.001
+        sprite_quad("P1", (math.cos(a)*0.04, math.sin(a)*0.04), a - math.pi/2, L, z, m)
+
+bake("pine_tuft_card", pine_tuft, 1024, 1024, 2.0, (0.0, 0.0, 5.0))
 bake("fir_branch_card", spray, 1024, 512, 2.0, (1.0, 0.0, 5.0))
 bake("fir_tip_card", tip, 512, 1024, 2.0, (0.0, 1.0, 5.0))
 print("baked")

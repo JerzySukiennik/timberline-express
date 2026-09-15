@@ -22,6 +22,7 @@ class TrackSegment:
 	var length := 0.0
 	var nodes: Array = [null, null]   # TrackNode at s=0 and s=length
 	var lateral := 0.0                # >0 for sidings: ballast drawn slightly lower
+	var visual: Node3D
 
 	func point(s: float) -> Vector3:
 		return curve.sample_baked(clampf(s, 0.0, length), false)
@@ -44,7 +45,7 @@ class TrackNode:
 
 	func link_index(seg: TrackSegment, end: int) -> int:
 		for i in links.size():
-			if links[i].seg == seg and links[i].end == end:
+			if not links[i].is_empty() and links[i].seg == seg and links[i].end == end:
 				return i
 		return -1
 
@@ -130,19 +131,78 @@ func _new_segment(points: PackedVector3Array, a: TrackNode, b: TrackNode) -> Tra
 
 
 ## Routing at a node when leaving `seg` through `end`. Trailing moves spring the switch.
+## Switch nodes keep links as [trunk, main, branch]; empty dicts are track that is not generated yet.
 func route(seg: TrackSegment, end: int, spring := true) -> Dictionary:
 	var node: TrackNode = seg.nodes[end]
 	var i := node.link_index(seg, end)
-	if node.links.size() <= 1:
-		return {}
 	if not node.is_switch:
-		return node.links[1 - i] if node.links.size() == 2 else {}
+		if node.links.size() != 2:
+			return {}
+		var other: Dictionary = node.links[1 - i]
+		return other if not other.is_empty() else {}
 	if i == 0:
-		return node.links[1 + node.state]
+		var out: Dictionary = node.links[1 + node.state] if node.links.size() > 1 + node.state else {}
+		return out
 	if spring and node.state != i - 1:
 		node.state = i - 1
 		switch_changed.emit(node)
 	return node.links[0]
+
+
+func new_node(pos: Vector3, switch := false) -> TrackNode:
+	var n := _new_node(pos)
+	n.is_switch = switch
+	if switch:
+		n.links = [{}, {}, {}]
+	return n
+
+
+## Adds a segment and attaches its ends. For switch nodes pass the slot (0 trunk, 1 main, 2 branch).
+func add_segment(points: PackedVector3Array, a: TrackNode, slot_a: int, b: TrackNode, slot_b: int, lateral := 0.0) -> TrackSegment:
+	var seg := TrackSegment.new()
+	seg.id = segments.size()
+	seg.curve = Curve3D.new()
+	seg.curve.bake_interval = 0.25
+	for p in points:
+		seg.curve.add_point(p)
+	seg.length = seg.curve.get_baked_length()
+	seg.nodes = [a, b]
+	seg.lateral = lateral
+	_attach(a, {"seg": seg, "end": 0}, slot_a)
+	_attach(b, {"seg": seg, "end": 1}, slot_b)
+	segments.append(seg)
+	_add_samples(seg)
+	return seg
+
+
+func _attach(n: TrackNode, link: Dictionary, slot: int) -> void:
+	if n.is_switch and slot >= 0:
+		while n.links.size() < 3:
+			n.links.append({})
+		n.links[slot] = link
+	else:
+		n.links.append(link)
+
+
+func _add_samples(seg: TrackSegment) -> void:
+	var n := int(seg.length / 0.5) + 1
+	for i in n + 1:
+		var p := seg.point(seg.length * i / n)
+		var key := Vector2i(floori(p.x / 4.0), floori(p.z / 4.0))
+		if not _grid.has(key):
+			_grid[key] = PackedVector3Array()
+		_grid[key].append(p)
+		samples.append(p)
+
+
+## All centerline samples inside an XZ rectangle (for terrain shaping in chunk workers).
+func samples_in_rect(r: Rect2) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for gx in range(floori(r.position.x / 4.0), floori(r.end.x / 4.0) + 1):
+		for gz in range(floori(r.position.y / 4.0), floori(r.end.y / 4.0) + 1):
+			var arr: PackedVector3Array = _grid.get(Vector2i(gx, gz), PackedVector3Array())
+			out.append_array(arr)
+	return out
 
 
 # ---------------------------------------------------------------- layout
@@ -235,14 +295,7 @@ func _build_samples() -> void:
 	samples.clear()
 	_grid.clear()
 	for seg in segments:
-		var n := int(seg.length / 0.5) + 1
-		for i in n + 1:
-			var p := seg.point(seg.length * i / n)
-			var key := Vector2i(floori(p.x / 4.0), floori(p.z / 4.0))
-			if not _grid.has(key):
-				_grid[key] = PackedVector3Array()
-			_grid[key].append(p)
-			samples.append(p)
+		_add_samples(seg)
 
 
 ## Nearest centerline point in XZ within `radius`; returns Vector4(x, y, z, dist) or dist = INF.
@@ -273,48 +326,53 @@ func cursor_at(seg: TrackSegment, s: float, flip := false) -> Cursor:
 # ---------------------------------------------------------------- meshes
 
 func build_meshes() -> void:
-	_materials()
+	for seg in segments:
+		build_segment_visual(seg)
+
+
+## Rails, ballast and sleepers for one segment as a child node (seg.visual) so the world can stream them.
+func build_segment_visual(seg: TrackSegment) -> Node3D:
+	if rail_material == null:
+		_materials()
+	var root := Node3D.new()
+	root.name = "Seg%d" % seg.id
 	var rail_st := SurfaceTool.new()
 	rail_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var ballast_st := SurfaceTool.new()
-	ballast_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var sleepers: Array[Transform3D] = []
-	for seg in segments:
-		_sweep_rails(rail_st, seg)
-		_sweep_ballast(ballast_st, seg)
-		var n := int(seg.length / 0.62)
-		for i in n:
-			var s := (i + 0.5) * seg.length / n
-			var p := seg.point(s)
-			var t := seg.tangent(s)
-			var side := t.cross(Vector3.UP).normalized()
-			var b := Basis(side, Vector3.UP, -t).orthonormalized()
-			sleepers.append(Transform3D(b, p + Vector3(0, -RAIL_H - 0.08, 0)))
+	_sweep_rails(rail_st, seg)
 	rail_st.generate_normals()
 	var rails := MeshInstance3D.new()
-	rails.name = "Rails"
 	rails.mesh = rail_st.commit()
 	rails.material_override = rail_material
-	add_child(rails)
+	root.add_child(rails)
+	var ballast_st := SurfaceTool.new()
+	ballast_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_sweep_ballast(ballast_st, seg)
 	ballast_st.generate_normals()
 	var ballast := MeshInstance3D.new()
-	ballast.name = "Ballast"
 	ballast.mesh = ballast_st.commit()
 	ballast.material_override = ballast_material
-	add_child(ballast)
+	root.add_child(ballast)
 	var box := BoxMesh.new()
 	box.size = Vector3(2.5, 0.15, 0.24)
 	box.material = sleeper_material
+	var n := int(seg.length / 0.62)
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = box
-	mm.instance_count = sleepers.size()
-	for i in sleepers.size():
-		mm.set_instance_transform(i, sleepers[i])
+	mm.instance_count = n
+	for i in n:
+		var s := (i + 0.5) * seg.length / n
+		var p := seg.point(s)
+		var t := seg.tangent(s)
+		var side := t.cross(Vector3.UP).normalized()
+		mm.set_instance_transform(i, Transform3D(Basis(side, Vector3.UP, -t).orthonormalized(), p + Vector3(0, -RAIL_H - 0.08, 0)))
 	var mmi := MultiMeshInstance3D.new()
-	mmi.name = "Sleepers"
 	mmi.multimesh = mm
-	add_child(mmi)
+	mmi.visibility_range_end = 260.0
+	root.add_child(mmi)
+	add_child(root)
+	seg.visual = root
+	return root
 
 
 func _materials() -> void:

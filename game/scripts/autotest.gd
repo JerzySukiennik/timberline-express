@@ -63,6 +63,9 @@ func _ok(key: String, value: Variant) -> void:
 
 
 func _run() -> void:
+	if main.world != null:
+		await _world_run()
+		return
 	await _seconds(3.0)
 	var p := _p()
 	await _shot("01_spawn")
@@ -463,3 +466,349 @@ func _side_shots(label: String) -> void:
 	vm.freeze_t = -1.0
 	p.camera.make_current()
 	cam.queue_free()
+
+
+# ---------------------------------------------------------------- endless world
+
+func _finish() -> void:
+	var sum := 0.0
+	for f in _fps:
+		sum += f
+	_ok("fps_avg", snappedf(sum / maxf(_fps.size(), 1), 0.1))
+	var file := FileAccess.open(shots_dir.path_join("report.json") if shots_dir != "" else "user://report.json", FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(report, "  "))
+	print("[autotest] done")
+	get_tree().quit()
+
+
+func _world_run() -> void:
+	var t0 := Time.get_ticks_msec()
+	while main.loading and Time.get_ticks_msec() - t0 < 90000:
+		await get_tree().process_frame
+	_ok("load_seconds", snappedf((Time.get_ticks_msec() - t0) / 1000.0, 0.1))
+	_ok("loaded", not main.loading)
+	await _seconds(2.0)
+	_fps.clear()
+	if _only.contains("graphics"):
+		await _world_graphics()
+		_finish()
+		return
+	var p := _p()
+	for tool_id in ["pickaxe", "axe", "knife"]:
+		p.inventory.add(tool_id, 1)
+	var w: ChunkWorld = main.world
+	_ok("chunks", w.chunks.size())
+	_ok("segments", main.network.segments.size())
+	_ok("player_on_flatcar", p.riding != null)
+	await _shot("w01_spawn")
+	for i in 3:
+		p.rotation.y += PI * 0.5
+		await _seconds(0.4)
+		await _shot("w02_look_%d" % i)
+	# harvest a chunk tree and a chunk boulder
+	await _world_harvest()
+	await _survival_test()
+	# ride the handcar a while
+	var h: Handcar = main.handcar
+	await _tp(h.global_transform * Vector3(0.5, 1.1, 0.6), h.global_transform * Vector3(0, 1.6, -5))
+	h.brake.set_value(0.0)
+	var start := h.global_position
+	var t1 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t1 < 25000:
+		await get_tree().physics_frame
+		h._pump(p, Vector2(0, 20.0 * sin(Time.get_ticks_msec() * 0.01)), true)
+		_fps.append(Engine.get_frames_per_second())
+	_ok("handcar_ride_m", snappedf(h.global_position.distance_to(start), 0.1))
+	# stand still on the flatcar while the consist keeps rolling: the player must not drift
+	var fc: Flatcar = main.flatcar
+	p.global_position = fc.global_transform * Vector3(0.4, 0.95, 0.5)
+	p.velocity = Vector3.ZERO
+	await _seconds(0.5)
+	var local0: Vector3 = fc.to_local(p.global_position)
+	h.consist.v = 7.0
+	var t2 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t2 < 12000:
+		await get_tree().physics_frame
+		h.add_pump(p, 1.0)
+	var local1: Vector3 = fc.to_local(p.global_position)
+	_ok("flatcar_speed_kmh", snappedf(absf(h.consist.v) * 3.6, 0.1))
+	_ok("standing_drift_m", snappedf(Vector2(local1.x - local0.x, local1.z - local0.z).length(), 0.01))
+	_ok("still_on_flatcar", p.riding == fc)
+	# jump on the moving flatcar and land back on it
+	Input.action_press("jump")
+	await _frames(3)
+	Input.action_release("jump")
+	await _seconds(1.5)
+	var local2: Vector3 = fc.to_local(p.global_position)
+	_ok("jump_drift_m", snappedf(Vector2(local2.x - local1.x, local2.z - local1.z).length(), 0.01))
+	_ok("on_flatcar_after_jump", p.riding == fc)
+	_ok("handcar_ride_kmh", snappedf(absf(h.consist.v) * 3.6, 0.1))
+	_ok("still_riding", p.riding == h)
+	await _shot("w03_ride")
+	h.brake.set_value(1.0)
+	# fly along the rails to stress streaming
+	p.fly = true
+	var seg: TrackNetwork.TrackSegment = h.cursor_f.seg
+	var ft := Time.get_ticks_msec()
+	var min_fps := 999.0
+	for k in 60:
+		var s := clampf(float(k) / 59.0 * seg.length, 0.0, seg.length)
+		var pos := seg.point(s) + Vector3(0, 18, 0)
+		p.global_position = pos
+		p.look_at_point(seg.point(minf(s + 60.0, seg.length)) + Vector3(0, 6, 0))
+		await _seconds(0.25)
+		min_fps = minf(min_fps, Engine.get_frames_per_second())
+	_ok("flyover_seconds", snappedf((Time.get_ticks_msec() - ft) / 1000.0, 0.1))
+	_ok("flyover_min_fps", min_fps)
+	_ok("pending_after_fly", w.pending_count())
+	await _seconds(3.0)
+	await _shot("w04_flyover_end")
+	var jn: TrackNetwork.TrackNode = seg.nodes[1]
+	p.global_position = jn.pos + Vector3(-30, 25, 30)
+	p.look_at_point(jn.pos)
+	await _seconds(4.0)
+	await _shot("w05_junction")
+	p.global_position = jn.pos + Vector3(0, 220, 260)
+	p.look_at_point(jn.pos + Vector3(0, 0, -300))
+	await _seconds(5.0)
+	await _shot("w06_valley_overview")
+	_ok("segments_after", main.network.segments.size())
+	_ok("switch_stands", main._stands.size())
+	p.fly = false
+	await _crafting_test()
+	await _building_test()
+	_finish()
+
+
+func _world_harvest() -> void:
+	var p := _p()
+	var best: Dictionary = {}
+	var bd := 1e9
+	for ch in main.world.chunks.values():
+		if ch.body == null:
+			continue
+		for oid in ch.body.owners:
+			var info: Dictionary = ch.body.owners[oid]
+			if info.kind != "tree":
+				continue
+			var pos: Vector3 = (info.data.xf as Transform3D).origin
+			var d := pos.distance_to(p.global_position)
+			if d < bd:
+				bd = d
+				best = info
+	if best.is_empty():
+		_ok("chunk_tree", "none")
+		return
+	var tp: Vector3 = (best.data.xf as Transform3D).origin
+	p.select_slot(p.inventory.find("axe"))
+	await _seconds(0.8)
+	await _tp(tp + Vector3(1.2, 0.3, 0.9), tp + Vector3.UP * 1.1)
+	var swings := 0
+	var trees_before := main.find_children("*", "ChopTree", true, false).size()
+	while swings < 25:
+		p.look_at_point(tp + Vector3.UP * 1.1)
+		p.viewmodel.request_swing()
+		swings += 1
+		await _seconds(0.85)
+		p.stamina = 100.0
+		var ct := main.find_children("*", "ChopTree", true, false)
+		if ct.size() > trees_before and ct[0]._falling != null:
+			break
+	_ok("chunk_tree_swings", swings)
+	await _seconds(4.5)
+	_ok("chunk_logs", main.find_children("*", "Pickup", true, false).filter(func(x: Node) -> bool: return x.item_id == "log").size())
+	_ok("removed_entries", main.world.removed.size())
+	await _shot("w_tree_felled")
+
+
+func _survival_test() -> void:
+	var p := _p()
+	var sv := p.survival
+	# eat
+	sv.hunger = 40.0
+	p.inventory.set_slot(8, p.inventory.make("berries", 5))
+	p.select_slot(8)
+	await _seconds(0.6)
+	Input.action_press("primary")
+	await _seconds(1.4)
+	Input.action_release("primary")
+	_ok("ate_berries", sv.hunger > 40.0)
+	# ponds, berry bushes, mushrooms present nearby?
+	var ponds := 0
+	var berry := 0
+	var mush := 0
+	for ch in main.world.chunks.values():
+		if ch.root:
+			ponds += ch.root.find_children("*", "WaterBody", true, false).size()
+		if ch.body:
+			for oid in ch.body.owners:
+				var info: Dictionary = ch.body.owners[oid]
+				if info.kind == "bush" and info.data.get("berry", false):
+					berry += 1
+				if info.kind == "mushroom":
+					mush += 1
+	_ok("ponds_near", ponds)
+	var wbs: Array = main.world.find_children("*", "WaterBody", true, false)
+	if not wbs.is_empty():
+		var wb: WaterBody = wbs[0]
+		var c := wb.global_position
+		var shape_r: float = ((wb.get_child(0) as CollisionShape3D).shape as CylinderShape3D).radius
+		var stand := c + Vector3(shape_r * 1.25, 0, 0)
+		stand.y = main.world.height_at(stand.x, stand.z) + 0.2
+		await _tp(stand, c + Vector3(0, -0.3, 0))
+		await _seconds(1.5)
+		await _shot("w_pond")
+		sv.thirst = 50.0
+		wb.use_shape(0, p)
+		_ok("drank_pond", sv.thirst > 50.0)
+		p.global_position = stand + Vector3(-shape_r * 1.0, 1.0, 0)
+		await _seconds(1.0)
+		_ok("in_water_detect", p.in_water)
+
+	_ok("berry_bushes_near", berry)
+	_ok("mushrooms_near", mush)
+	# death and respawn with backpack
+	var death_pos := p.global_position
+	sv.damage(500.0, "autotest")
+	await _seconds(1.0)
+	await _shot("w_death")
+	await _seconds(3.5)
+	_ok("respawned", not sv.dead and sv.health >= 99.0)
+	var bags := main.find_children("*", "DeathBag", true, false)
+	_ok("death_bag", bags.size() == 1 and (bags[0] as Node3D).global_position.distance_to(death_pos) < 3.0)
+	_ok("inventory_emptied", p.inventory.count("pickaxe") == 0)
+	if bags.size() == 1:
+		var bag: DeathBag = bags[0]
+		for i in bag.inventory.size():
+			var sl: Dictionary = bag.inventory.get_slot(i)
+			if not sl.is_empty():
+				p.inventory.set_slot(i, sl)
+				bag.inventory.slots[i] = {}
+	_ok("inventory_restored", p.inventory.count("pickaxe") == 1)
+
+
+func _crafting_test() -> void:
+	var p := _p()
+	var inv := p.inventory
+	for id in ["stick", "stone", "fiber", "log"]:
+		inv.add(id, 20)
+	var r_axe: Dictionary = Recipes.CRAFT.filter(func(r: Dictionary) -> bool: return r.out == "stone_axe")[0]
+	var r_rope: Dictionary = Recipes.CRAFT.filter(func(r: Dictionary) -> bool: return r.out == "rope")[0]
+	inv.add("rope", 2)
+	p.queue_craft(r_axe)
+	await _seconds(3.6)
+	_ok("crafted_stone_axe", inv.count("stone_axe") == 1)
+	# place a workbench and a campfire on the ground, cook meat
+	var r_wb: Dictionary = Recipes.CRAFT.filter(func(r: Dictionary) -> bool: return r.out == "workbench")[0]
+	var r_cf: Dictionary = Recipes.CRAFT.filter(func(r: Dictionary) -> bool: return r.out == "campfire")[0]
+	inv.add("rope", 5)
+	p.queue_craft(r_wb)
+	p.queue_craft(r_cf)
+	await _seconds(9.0)
+	_ok("crafted_stations", inv.count("workbench") == 1 and inv.count("campfire") == 1)
+	var ground := p.global_position + (-p.global_basis.z) * 3.0
+	ground.y = main.world.height_at(ground.x, ground.z)
+	var cf := Station.place(main, "campfire", Transform3D(Basis.IDENTITY, ground), main)
+	cf.inventory.set_slot(0, cf.inventory.make("raw_meat", 1))
+	cf.inventory.set_slot(1, cf.inventory.make("log", 1))
+	await _seconds(0.5)
+	_ok("campfire_lit", cf.burn > 0.0)
+	cf.progress = 24.0
+	await _seconds(1.5)
+	_ok("meat_cooked", not cf.inventory.get_slot(2).is_empty() and cf.inventory.get_slot(2).id == "cooked_meat")
+	p.look_at_point(cf.global_position)
+	await _seconds(1.0)
+	await _shot("w_campfire")
+	# station on the moving flatcar
+	var fc: Flatcar = main.flatcar
+	var ws := Station.place(main, "workbench", fc.global_transform * Transform3D(Basis.IDENTITY, Vector3(0, 0.86, -1.5)), fc)
+	_ok("workbench_on_flatcar", ws.get_parent() == fc)
+	_ok("nearby_workbench", main.nearby_station("workbench", ws.global_position + Vector3(1, 0, 0), 4.0) != null)
+	# kits
+	inv.add("flatcar_kit", 1)
+	var before: int = main.handcar.consist.vehicles.size()
+	_ok("flatcar_attached", main.attach_flatcar(main.handcar.consist) and main.handcar.consist.vehicles.size() == before + 1)
+	main.handcar.consist.v = 0.0
+	var steam_ok: bool = main.upgrade_engine(main.handcar, "steam_kit")
+	await _seconds(0.5)
+	_ok("steam_upgrade", steam_ok and main.steam != null and main.steam.consist.vehicles.size() == before + 2)
+
+
+func _view(label: String, pos: Vector3, look: Vector3) -> void:
+	var p := _p()
+	p.global_position = pos
+	p.velocity = Vector3.ZERO
+	p.look_at_point(look)
+	await _seconds(2.5)
+	var n := 0
+	var sum := 0.0
+	var end := Time.get_ticks_msec() + 1500
+	while Time.get_ticks_msec() - end < 0:
+		await get_tree().process_frame
+		sum += Engine.get_frames_per_second()
+		n += 1
+	_ok("fps_" + label, snappedf(sum / maxf(n, 1), 0.1))
+	await _shot("g_" + label)
+
+
+func _world_graphics() -> void:
+	var p := _p()
+	p.fly = true
+	p.inventory.add("axe", 1)
+	p.select_slot(p.inventory.find("axe"))
+	var w: ChunkWorld = main.world
+	var base: Vector3 = main.handcar.global_position
+	var fwd: Vector3 = main.handcar.forward()
+	var side := fwd.cross(Vector3.UP).normalized()
+	var eye := func(v: Vector3) -> Vector3: return Vector3(v.x, w.height_at(v.x, v.z) + 1.65, v.z)
+	await _view("rails_forward", eye.call(base + side * 1.8), base + fwd * 60.0 + Vector3.UP * 1.0)
+	await _view("toward_sun", eye.call(base - side * 14.0), base - side * 14.0 + Vector3(-60, 8, 50))
+	await _view("into_forest", eye.call(base + side * 16.0), base + side * 60.0 + Vector3.UP * 2.0)
+	await _view("meadow_low", eye.call(base - side * 9.0 + fwd * 20.0) - Vector3.UP * 0.9, base - side * 25.0 + fwd * 40.0)
+	await _view("valley_high", base + Vector3(0, 60, 0) - fwd * 80.0, base + fwd * 200.0)
+	var wbs: Array = w.find_children("*", "WaterBody", true, false)
+	if not wbs.is_empty():
+		var c: Vector3 = (wbs[0] as Node3D).global_position
+		await _view("pond", eye.call(c + Vector3(14, 0, 8)), c)
+	await _view("train_close", eye.call(base + side * 4.0 + fwd * 3.0), base + Vector3.UP * 0.8)
+	for key in ["grass", "chunk_grass", "ferns", "trees", "tree_shadows_w", "ssao", "postfx", "glow"]:
+		main.set_quality(key, false)
+		await _view("rails_without_" + key, eye.call(base + side * 1.8), base + fwd * 60.0 + Vector3.UP * 1.0)
+		main.set_quality(key, true)
+	var vp := get_viewport()
+	await _view("rails_again", eye.call(base + side * 1.8), base + fwd * 60.0 + Vector3.UP * 1.0)
+	_ok("tris_rails", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME))
+	_ok("draws_rails", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
+	await _view("toward_sun_high", eye.call(base - side * 14.0), base - side * 14.0 + Vector3(-60, 8, 50))
+	p.fly = false
+
+
+func _building_test() -> void:
+	var p := _p()
+	var fc: Flatcar = null
+	for v in main.steam.consist.vehicles:
+		if v is Flatcar:
+			fc = v
+			break
+	if fc == null:
+		_ok("building", "no flatcar")
+		return
+	p.inventory.add("plank", 60)
+	p.inventory.add("nails", 60)
+	var built := 0
+	for piece in ["floor", "wall", "window", "roof", "railing"]:
+		var cell := Vector3i(0, 0, 1) if piece != "floor" else Vector3i(1, 1, 2)
+		var edge := 1 if piece in ["wall", "window", "railing"] else 0
+		if piece == "window":
+			edge = 3
+		var pc := Building.build(fc, piece, cell, edge)
+		if pc:
+			built += 1
+	_ok("pieces_built", built)
+	_ok("pieces_registered", (fc.get_meta("pieces", {}) as Dictionary).size())
+	await _tp(fc.global_transform * Vector3(4.5, 2.2, 3.0), fc.global_position + Vector3.UP * 1.5)
+	p.fly = true
+	await _seconds(1.0)
+	await _shot("w_building")
+	p.fly = false

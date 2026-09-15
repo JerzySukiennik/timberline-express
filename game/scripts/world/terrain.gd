@@ -161,11 +161,11 @@ func _collision() -> void:
 func _mountains() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var seg := 96
-	var rings := 14
+	var seg := 180
+	var rings := 22
 	var mn := FastNoiseLite.new()
 	mn.seed = 5
-	mn.frequency = 0.004
+	mn.frequency = 0.0028
 	mn.fractal_octaves = 5
 	var grid := []
 	for r in rings:
@@ -176,7 +176,7 @@ func _mountains() -> void:
 			var x := cos(a) * rad
 			var z := sin(a) * rad
 			var ridge := 1.0 - absf(mn.get_noise_2d(x, z))
-			var hgt := pow(ridge, 2.2) * 420.0 * smoothstep(150.0, 480.0, rad) + mn.get_noise_2d(x * 2.0, z * 2.0) * 40.0 + 22.0
+			var hgt := pow(ridge, 1.7) * 360.0 * smoothstep(170.0, 520.0, rad) + mn.get_noise_2d(x * 1.5, z * 1.5) * 25.0 + 24.0
 			if r == 0:
 				hgt = 20.0
 			row.append(Vector3(x, hgt, z))
@@ -271,8 +271,11 @@ func scatter(avoid: Array) -> void:
 		cs.position = Vector3(x, y + 3.0, z)
 		tree_colliders.add_child(cs)
 		placed += 1
+	var all_trees: Array = []
 	for v in variants:
 		_multimesh_from_glb("res://assets/models/trees/%s.glb" % v, xforms[v], true)
+		all_trees.append_array(xforms[v])
+	_tree_shadow_proxies(all_trees)
 	# rocks with collision
 	var rock_files := []
 	for f in ResourceLoader.list_directory("res://assets/models/rocks"):
@@ -303,10 +306,33 @@ func scatter(avoid: Array) -> void:
 			body.add_child(cs)
 		placed += 1
 	# ferns, shrubs, dry branches, stumps: visual only
-	_scatter_plants("res://assets/models/plants", ["fern_02"], 700, 4.0, 150.0, 3.5, avoid, 1.0)
+	_scatter_plants("res://assets/models/plants", ["fern_02"], 380, 4.0, 110.0, 3.5, avoid, 1.0)
 	_scatter_plants("res://assets/models/plants", ["shrub_02"], 90, 8.0, 140.0, 5.0, avoid, 2.0)
 	_scatter_plants("res://assets/models/plants", ["dry_branches"], 120, 3.0, 140.0, 3.2, avoid, 1.0)
 	_scatter_plants("res://assets/models/plants", ["tree_stump"], 25, 10.0, 140.0, 6.0, avoid, 1.0)
+
+
+func _tree_shadow_proxies(xforms: Array) -> void:
+	if xforms.is_empty():
+		return
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.05
+	cone.bottom_radius = 2.6
+	cone.height = 10.5
+	cone.radial_segments = 8
+	cone.rings = 1
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = cone
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		var t: Transform3D = xforms[i]
+		mm.set_instance_transform(i, t * Transform3D(Basis.IDENTITY, Vector3(0, 7.8, 0)))
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "TreeShadows"
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	add_child(mmi)
 
 
 func _scatter_plants(dir: String, prefixes: Array, count: int, rmin: float, rmax: float, min_track: float, avoid: Array, sway_h: float) -> void:
@@ -356,12 +382,14 @@ func _multimesh_from_glb(path: String, xforms: Array, is_tree: bool, sway_h := 1
 		if is_tree and nm.begins_with("Foliage"):
 			var tex_name := "fir_tip_card" if nm == "FoliageTip" else "fir_branch_card"
 			mmi.material_override = foliage_material(load("res://assets/textures/trees/%s.png" % tex_name), 14.0)
+			# alpha-tested cards in four shadow cascades were the single biggest frame cost; cones cast the shadow instead
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif not is_tree:
 			var src := mesh.surface_get_material(0) as BaseMaterial3D
 			if src and src.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or (src and src.albedo_texture and path.contains("fern")):
 				mmi.material_override = foliage_material(src.albedo_texture, sway_h, Color(0.9, 0.95, 0.85))
 			if path.contains("fern") or path.contains("shrub"):
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mmi.visibility_range_end = 220.0 if is_tree else 70.0
+		mmi.visibility_range_end = 220.0 if is_tree else 48.0
 		add_child(mmi)
 	inst.free()

@@ -44,8 +44,29 @@ func setup(network: TrackNetwork, model_path: String) -> void:
 		coupler_front = absf(mf.position.z)
 	if mr:
 		coupler_rear = absf(mr.position.z)
+	_fix_materials(model)
 	_roll = Sfx.loop("rail_roll_loop", self, -80.0, 6.0, 70.0)
 	_squeal = Sfx.loop("brake_squeal_loop", self, -80.0, 6.0, 70.0)
+
+
+static var _glass: StandardMaterial3D
+
+
+## Glass from the GLB is opaque; swap it for a see-through material.
+func _fix_materials(root: Node) -> void:
+	if _glass == null:
+		_glass = StandardMaterial3D.new()
+		_glass.albedo_color = Color(0.55, 0.62, 0.65, 0.22)
+		_glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_glass.roughness = 0.05
+		_glass.metallic_specular = 0.9
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		for si in m.mesh.get_surface_count():
+			var mat := m.mesh.surface_get_material(si)
+			if mat and mat.resource_name == "glass":
+				m.set_surface_override_material(si, _glass)
+				m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func part(n: String) -> Node3D:

@@ -61,8 +61,38 @@ func _ready() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+var environment: Environment
+
+
+## Runtime quality switches (used by the perf autotest to find what costs frames).
+func set_quality(key: String, on: bool) -> void:
+	match key:
+		"volumetric":
+			environment.volumetric_fog_enabled = on
+		"ssao":
+			environment.ssao_enabled = on
+		"glow":
+			environment.glow_enabled = on
+		"shadows":
+			sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if on else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+			sun.directional_shadow_max_distance = 120.0 if on else 60.0
+		"trees", "plants":
+			for c in terrain.get_children():
+				if c is MultiMeshInstance3D:
+					var is_tree := (c as MultiMeshInstance3D).visibility_range_end > 100.0
+					if (key == "trees") == is_tree:
+						c.visible = on
+		"tree_shadows":
+			for c in terrain.get_children():
+				if c is MultiMeshInstance3D and (c as MultiMeshInstance3D).visibility_range_end > 100.0:
+					(c as MultiMeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		"msaa":
+			get_viewport().use_taa = on
+
+
 func _environment() -> void:
 	var env := Environment.new()
+	environment = env
 	var sky := Sky.new()
 	var pano := PanoramaSkyMaterial.new()
 	pano.panorama = load("res://assets/textures/sky/kloofendal_misty_morning_puresky_2k.hdr")
@@ -77,7 +107,7 @@ func _environment() -> void:
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = 1.05
-	env.ssao_enabled = true
+	env.ssao_enabled = false
 	env.ssao_radius = 1.2
 	env.ssao_intensity = 1.6
 	env.glow_enabled = true
@@ -86,14 +116,14 @@ func _environment() -> void:
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_light_color = Color(0.66, 0.7, 0.72)
-	env.fog_density = 0.0028
+	env.fog_density = 0.0011
 	env.fog_sky_affect = 0.35
-	env.fog_aerial_perspective = 0.6
+	env.fog_aerial_perspective = 0.35
 	env.volumetric_fog_enabled = true
-	env.volumetric_fog_density = 0.012
+	env.volumetric_fog_density = 0.0035
 	env.volumetric_fog_albedo = Color(0.85, 0.87, 0.88)
 	env.volumetric_fog_anisotropy = 0.55
-	env.volumetric_fog_length = 90.0
+	env.volumetric_fog_length = 64.0
 	env.volumetric_fog_sky_affect = 0.0
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 0.92
@@ -109,7 +139,7 @@ func _environment() -> void:
 	sun.light_volumetric_fog_energy = 1.6
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = 120.0
+	sun.directional_shadow_max_distance = 90.0
 	sun.shadow_bias = 0.04
 	sun.shadow_blur = 1.2
 	add_child(sun)
@@ -198,7 +228,7 @@ func _player() -> void:
 	for id in ["pickaxe", "axe", "knife", "bucket", "jerrycan"]:
 		player.inventory.add(id, 1)
 	player.inventory.add("coal", 6)
-	player.select_slot(5)
+	player.select_slot(6)
 
 
 func _ui() -> void:

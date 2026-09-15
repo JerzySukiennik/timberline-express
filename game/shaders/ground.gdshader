@@ -34,7 +34,10 @@ void fragment() {
 	vec3 nor = mix(fn, ln, leaf);
 	alb = mix(alb, ga, g);
 	nor = mix(nor, gn, g);
-	alb *= mix(0.78, 1.08, n2);
+	float moss = smoothstep(0.35, 0.75, texture(macro_noise, wpos.xz * 0.03 + 0.7).r) * (1.0 - g);
+	alb *= vec3(0.8, 0.8, 0.72);
+	alb = mix(alb, alb * vec3(0.55, 0.72, 0.42), moss * 0.85);
+	alb *= mix(0.72, 1.02, n2);
 	ALBEDO = alb;
 	NORMAL_MAP = nor;
 	vec3 arm = texture(forest_arm, uv).rgb;

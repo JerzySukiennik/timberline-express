@@ -25,6 +25,7 @@ static func create(parent: Node, pos: Vector3, variant := "fir_b", scale := 1.0)
 	for mi in t.model.find_children("Foliage*", "MeshInstance3D", true, false):
 		var tex := "fir_tip_card" if String(mi.name) == "FoliageTip" else "fir_branch_card"
 		(mi as MeshInstance3D).material_override = Terrain.foliage_material(load("res://assets/textures/trees/%s.png" % tex), 14.0)
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var aabb := AABB()
 	for mi in t.model.find_children("Trunk", "MeshInstance3D", true, false):
 		aabb = (mi as MeshInstance3D).get_aabb()

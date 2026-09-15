@@ -4,7 +4,7 @@ render_mode diffuse_burley;
 
 uniform vec3 plaid_a : source_color = vec3(0.42, 0.07, 0.06);
 uniform vec3 plaid_b : source_color = vec3(0.08, 0.07, 0.07);
-uniform vec3 skin : source_color = vec3(0.72, 0.5, 0.39);
+uniform vec3 skin : source_color = vec3(0.6, 0.41, 0.31);
 uniform vec3 leather : source_color = vec3(0.26, 0.16, 0.09);
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }

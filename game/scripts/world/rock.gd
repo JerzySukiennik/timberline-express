@@ -52,6 +52,7 @@ static func materials() -> Array:
 		_outer.ao_enabled = true
 		_outer.ao_texture = _outer.roughness_texture
 		_outer.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+		_outer.albedo_color = Color(0.72, 0.7, 0.68)
 		_inner = StandardMaterial3D.new()
 		_inner.albedo_texture = load("res://assets/textures/ground/rockface_diff.jpg")
 		_inner.normal_enabled = true

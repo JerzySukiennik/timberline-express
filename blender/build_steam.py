@@ -40,7 +40,7 @@ def loco():
     box("headlamp", (0.28, 0.25, 0.3), (0, 3.05, 2.6), "black", body)
     anim(box("Headlight", (0.2, 0.02, 0.2), (0, 3.18, 2.6), "Headlight", root, bevel=0))
     # firebox + cab
-    box("firebox", (1.3, 0.9, 1.2), (0, -1.3, 1.6), "green", body)
+    box("firebox", (1.3, 0.85, 1.2), (0, -0.55, 1.6), "green", body)
     box("cabfloor", (2.2, 1.9, 0.08), (0, -2.0, 1.12), "planks", body)
     box("cabfront", (2.2, 0.08, 1.95), (0, -1.0, 2.12), "green", body)  # spectacle plate (windows as dark insets)
     for x in (-0.6, 0.6):
@@ -75,8 +75,8 @@ def loco():
     box("brkgrip", (0.07, 0.07, 0.12), (-0.8, -1.6, 1.8), "wood", brk); join_children(brk)
     box("brkstand", (0.12, 0.12, 0.1), (-0.8, -1.6, 1.2), "iron", body)
     cyl("whistle", 0.05, 0.25, (0.3, -1.0, 3.28), "Z", "brass", body, verts=14)
-    wp = anim(cyl("WhistlePull", 0.012, 0.6, (0.3, -1.25, 2.5), "Z", "rope", root, verts=8, pivot=(0.3, -1.25, 2.8)))
-    cyl("whistleknob", 0.03, 0.06, (0.3, -1.25, 2.2), "Z", "wood", wp, verts=10); join_children(wp)
+    wp = anim(cyl("WhistlePull", 0.012, 0.5, (0.85, -1.25, 2.75), "Z", "rope", root, verts=8, pivot=(0.85, -1.25, 3.0)))
+    cyl("whistleknob", 0.03, 0.06, (0.85, -1.25, 2.5), "Z", "wood", wp, verts=10); join_children(wp)
     # wheels + rods
     for (y, tag) in ((0.95, "F"), (-0.55, "R")):
         for x in (-0.72, 0.72):
@@ -92,7 +92,7 @@ def loco():
         box(f"crosshead{x}", (0.1, 0.2, 0.12), (x*0.98, 0.7, 0.9), "steel", pr); join_children(pr)
     join_children(body)
     for nm, p in (("M_CouplerF",(0,3.3,0.9)),("M_CouplerR",(0,-3.0,0.9)),("M_FireDoor",(0,-1.25,1.5)),("M_Regulator",(0.46,-1.22,2.1)),
-                  ("M_Reverser",(0.8,-1.7,2.05)),("M_Brake",(-0.8,-1.6,1.8)),("M_Whistle",(0.3,-1.25,2.2)),("M_Smoke",(0,2.7,3.15)),
+                  ("M_Reverser",(0.8,-1.7,2.05)),("M_Brake",(-0.8,-1.6,1.8)),("M_Whistle",(0.85,-1.25,2.5)),("M_Smoke",(0,2.7,3.15)),
                   ("M_SafetyValve",(0,-0.35,2.75)),("M_Cab",(0,-2.0,1.16))):
         empty(nm, p, root)
     export_glb(MODELS + "vehicles/steam_loco.glb", list(bpy.context.scene.objects))

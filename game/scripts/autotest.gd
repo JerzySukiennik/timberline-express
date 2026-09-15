@@ -20,6 +20,10 @@ func _ready() -> void:
 	_run()
 
 
+func _want(section: String) -> bool:
+	return _only == "" or section in _only.split(",")
+
+
 func _frames(n: int) -> void:
 	for i in n:
 		await get_tree().process_frame
@@ -62,20 +66,22 @@ func _run() -> void:
 	await _seconds(3.0)
 	var p := _p()
 	await _shot("01_spawn")
-	if _only == "" or _only == "move":
+	if _want("move"):
 		await _movement()
-	if _only == "" or _only == "tools":
+	if _want("tools"):
 		await _tool_poses()
-	if _only == "" or _only == "world":
+	if _want("world"):
 		await _mining()
 		await _chopping()
 		await _inventory()
 		await _mantle()
-	if _only == "" or _only == "vehicles":
+	if _want("vehicles"):
 		await _handcar()
 		await _steam()
 		await _electric()
 		await _switches()
+	if _want("perf"):
+		await _perf()
 	await _overview()
 	var sum := 0.0
 	for f in _fps:
@@ -139,15 +145,21 @@ func _tool_poses() -> void:
 				break
 		vm.freeze_t = 0.45
 		await _shot("04_%s_draw" % tool[0])
+		_ik_debug(tool[0] + "_draw")
 		vm.freeze_t = -1.0
 		await _seconds(0.8)
 		await _shot("05_%s_idle" % tool[0])
+		_ik_debug(tool[0] + "_idle")
+		await _side_shots(tool[0])
+		if tool[0] == "pickaxe":
+			pass
 		vm.request_swing()
 		var cfg: Dictionary = ViewModel.TOOLS[tool[0]]
 		vm.freeze_t = 0.3
 		await _shot("06_%s_windup" % tool[0])
 		vm.freeze_t = float(cfg.impact) + 0.01
 		await _shot("07_%s_impact" % tool[0])
+		_ik_debug(tool[0] + "_impact")
 		vm.freeze_t = -1.0
 		await _seconds(1.0)
 	_ok("tool_state_after", vm.state)
@@ -391,3 +403,63 @@ func _overview() -> void:
 	await _seconds(0.5)
 	await _shot("21_samples")
 	p.fly = false
+
+
+func _measure(label: String) -> void:
+	await _seconds(0.8)
+	var n := 0
+	var sum := 0.0
+	var end := Time.get_ticks_msec() + 2500
+	while Time.get_ticks_msec() < end:
+		await get_tree().process_frame
+		sum += Engine.get_frames_per_second()
+		n += 1
+	_ok("perf_" + label, snappedf(sum / maxf(n, 1), 0.1))
+
+
+func _perf() -> void:
+	var p := _p()
+	p.fly = true
+	await _tp(Vector3(-30, main.terrain.height_at(-30, 20) + 1.7, 20), Vector3(40, 2, -20))
+	await _measure("all_on")
+	for key in ["volumetric", "ssao", "glow", "msaa", "shadows", "tree_shadows", "plants", "trees"]:
+		main.set_quality(key, false)
+		await _measure("without_" + key)
+	for key in ["volumetric", "ssao", "glow", "msaa", "shadows", "tree_shadows", "plants", "trees"]:
+		main.set_quality(key, true)
+	p.fly = false
+
+
+func _ik_debug(label: String) -> void:
+	var vm: ViewModel = _p().viewmodel
+	for side in ["r", "l"]:
+		var fr: Dictionary = vm._smooth_r if side == "r" else vm._smooth_l
+		if fr.is_empty():
+			continue
+		var sh := ViewModel.SHOULDER_R if side == "r" else ViewModel.SHOULDER_L
+		var w: Vector3 = fr.w
+		print("IK %s %s wrist=%s reach=%.2f" % [label, side, str(w.snappedf(0.01)), w.distance_to(sh)])
+
+
+## Close-up of the grip from outside the player camera (right side and from below/front).
+func _side_shots(label: String) -> void:
+	var p := _p()
+	var vm: ViewModel = p.viewmodel
+	if vm.tool_node == null:
+		return
+	var cfg: Dictionary = ViewModel.TOOLS[label]
+	var grip: Vector3 = vm.tool_node.global_transform * (vm.tool_info.bottom + vm.tool_info.axis * vm.tool_info.length * float(cfg.u_r))
+	var cam := Camera3D.new()
+	cam.fov = 40.0
+	cam.near = 0.01
+	main.add_child(cam)
+	var views := {"side": p.camera.global_basis.x * 0.55 + p.camera.global_basis.y * 0.05, "front": -p.camera.global_basis.z * 0.6 + p.camera.global_basis.y * 0.1}
+	for v in views:
+		cam.global_position = grip + views[v]
+		cam.look_at(grip)
+		cam.make_current()
+		vm.freeze_t = 0.99
+		await _shot("05c_%s_grip_%s" % [label, v])
+	vm.freeze_t = -1.0
+	p.camera.make_current()
+	cam.queue_free()

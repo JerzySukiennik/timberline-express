@@ -2,49 +2,50 @@
 class_name ViewModel
 extends Node3D
 
-const SHOULDER_R := Vector3(0.19, -0.25, -0.04)
-const SHOULDER_L := Vector3(-0.19, -0.25, -0.04)
-const POLE_R := Vector3(0.7, -1.0, 0.35)
-const POLE_L := Vector3(-0.7, -1.0, 0.35)
+const SHOULDER_R := Vector3(0.17, -0.28, -0.02)
+const SHOULDER_L := Vector3(-0.17, -0.28, -0.02)
+const POLE_R := Vector3(0.8, -1.0, 0.4)
+const POLE_L := Vector3(-0.8, -1.0, 0.4)
 
-# Tool rigs. Poses are camera-space {b: handle bottom, d: handle direction, h: head/edge facing}.
+# Tool rigs. Poses are camera-space {b: handle bottom, d: handle direction, h: head/edge facing, lean: shoulder shift}.
+# Right hand grips high on the handle (u_r), left hand low (u_l) — fractions of the tool length from the bottom.
 const TOOLS := {
 	"pickaxe": {
-		"scale": 0.82, "u_r": 0.6, "u_l": 0.12, "two_hand": true, "alpha_r": 0.35, "alpha_l": -0.25,
-		"idle": {"b": Vector3(0.06, -0.5, -0.12), "d": Vector3(0.36, 0.56, -0.74), "h": Vector3(-0.2, 0.2, -1.0)},
-		"draw_from": {"b": Vector3(0.5, -0.95, 0.05), "d": Vector3(0.9, 0.2, 0.3), "h": Vector3(0, -1, 0)},
-		"draw_time": 0.55, "swing_time": 1.0, "impact": 0.46, "swing_sound": "swing_heavy", "stamina": 7.0,
+		"scale": 0.82, "u_r": 0.46, "u_l": 0.17, "two_hand": true, "alpha_r": 0.25, "alpha_l": -0.2,
+		"idle": {"b": Vector3(0.1, -0.35, -0.2), "d": Vector3(0.15, 0.62, -0.77), "h": Vector3(-0.2, 0.2, -1.0)},
+		"draw_from": {"b": Vector3(0.38, -0.85, 0.02), "d": Vector3(0.6, 0.45, 0.65), "h": Vector3(0, -1, 0)},
+		"draw_time": 0.6, "swing_time": 1.0, "impact": 0.46, "swing_sound": "swing_heavy", "stamina": 7.0,
 		"swing": [
 			[0.0, "idle"],
-			[0.34, {"b": Vector3(0.16, -0.36, -0.2), "d": Vector3(0.12, 0.95, 0.28), "h": Vector3(0.0, 0.25, 1.0), "lean": Vector3(0, 0.02, 0.06)}],
-			[0.46, {"b": Vector3(0.05, -0.26, -0.2), "d": Vector3(0.0, -0.32, -0.95), "h": Vector3(0, -1, 0.1), "lean": Vector3(0, -0.05, -0.16)}],
-			[0.62, {"b": Vector3(0.05, -0.34, -0.18), "d": Vector3(0.05, -0.12, -0.99), "h": Vector3(0, -1, 0.2), "lean": Vector3(0, -0.04, -0.12)}],
+			[0.34, {"b": Vector3(0.24, -0.27, -0.42), "d": Vector3(0.1, 0.88, 0.46), "h": Vector3(0.0, 0.46, -0.88), "lean": Vector3(0.01, 0.02, 0.0)}],
+			[0.46, {"b": Vector3(0.05, -0.13, -0.3), "d": Vector3(0.0, -0.25, -0.97), "h": Vector3(0, -1, 0.25), "lean": Vector3(0, -0.02, -0.2)}],
+			[0.62, {"b": Vector3(0.06, -0.22, -0.28), "d": Vector3(0.0, -0.45, -0.89), "h": Vector3(0, -0.9, 0.45), "lean": Vector3(0, -0.03, -0.14)}],
 			[1.0, "idle"],
 		],
 	},
 	"axe": {
-		"scale": 1.0, "u_r": 0.62, "u_l": 0.1, "two_hand": true, "alpha_r": 0.35, "alpha_l": -0.25,
-		"idle": {"b": Vector3(0.12, -0.5, -0.18), "d": Vector3(0.3, 0.7, -0.65), "h": Vector3(1.0, 0.1, 0.0)},
-		"draw_from": {"b": Vector3(0.75, -0.55, -0.1), "d": Vector3(0.2, -0.3, 0.93), "h": Vector3(0, 1, 0)},
+		"scale": 1.0, "u_r": 0.45, "u_l": 0.12, "two_hand": true, "alpha_r": 0.25, "alpha_l": -0.2,
+		"idle": {"b": Vector3(0.13, -0.31, -0.3), "d": Vector3(0.1, 0.65, -0.75), "h": Vector3(1.0, 0.0, 0.2)},
+		"draw_from": {"b": Vector3(0.6, -0.55, -0.1), "d": Vector3(0.3, -0.4, 0.86), "h": Vector3(0, 1, 0)},
 		"draw_time": 0.45, "swing_time": 0.82, "impact": 0.45, "swing_sound": "swing_heavy", "stamina": 6.0,
 		"swing": [
 			[0.0, "idle"],
-			[0.32, {"b": Vector3(0.28, -0.3, -0.12), "d": Vector3(0.55, 0.8, 0.25), "h": Vector3(0.3, -0.2, 1.0), "lean": Vector3(0.03, 0.02, 0.05)}],
-			[0.45, {"b": Vector3(0.1, -0.3, -0.24), "d": Vector3(-0.75, -0.05, -0.66), "h": Vector3(-0.66, 0.0, 0.75), "lean": Vector3(-0.03, -0.03, -0.14)}],
-			[0.6, {"b": Vector3(0.02, -0.34, -0.22), "d": Vector3(-0.8, -0.15, -0.55), "h": Vector3(-0.55, 0.0, 0.8), "lean": Vector3(-0.04, -0.03, -0.1)}],
+			[0.32, {"b": Vector3(0.27, -0.22, -0.38), "d": Vector3(0.35, 0.85, 0.4), "h": Vector3(-0.3, 0.2, -1.0), "lean": Vector3(0.03, 0.02, 0.0)}],
+			[0.45, {"b": Vector3(0.12, -0.2, -0.34), "d": Vector3(-0.7, -0.2, -0.68), "h": Vector3(-0.5, -0.8, 0.3), "lean": Vector3(-0.03, -0.03, -0.15)}],
+			[0.6, {"b": Vector3(0.04, -0.26, -0.3), "d": Vector3(-0.75, -0.35, -0.55), "h": Vector3(-0.4, -0.85, 0.35), "lean": Vector3(-0.04, -0.03, -0.1)}],
 			[1.0, "idle"],
 		],
 	},
 	"knife": {
-		"scale": 1.0, "u_r": 0.35, "u_l": -1.0, "two_hand": false, "alpha_r": 0.0,
-		"idle": {"b": Vector3(0.2, -0.3, -0.34), "d": Vector3(-0.15, 0.45, -0.88), "h": Vector3(0, -1, 0)},
-		"draw_from": {"b": Vector3(0.28, -0.7, -0.25), "d": Vector3(0, 1, 0), "h": Vector3(0, 0, 1)},
+		"scale": 1.0, "u_r": 0.28, "u_l": -1.0, "two_hand": false, "alpha_r": 0.0,
+		"idle": {"b": Vector3(0.2, -0.28, -0.36), "d": Vector3(-0.2, 0.35, -0.92), "h": Vector3(0, -1, 0)},
+		"draw_from": {"b": Vector3(0.25, -0.62, -0.3), "d": Vector3(0, 1, 0), "h": Vector3(0, 0, 1)},
 		"draw_time": 0.65, "spin": true, "swing_time": 0.5, "impact": 0.42, "swing_sound": "swing_light", "stamina": 3.0,
 		"swing": [
 			[0.0, "idle"],
-			[0.28, {"b": Vector3(0.34, -0.2, -0.22), "d": Vector3(0.3, 0.6, -0.74), "h": Vector3(-1, 0, 0), "lean": Vector3(0.02, 0.01, 0.03)}],
-			[0.42, {"b": Vector3(0.02, -0.3, -0.42), "d": Vector3(-0.7, 0.1, -0.7), "h": Vector3(-0.7, -0.2, 0.7), "lean": Vector3(-0.03, -0.02, -0.08)}],
-			[0.58, {"b": Vector3(-0.08, -0.36, -0.36), "d": Vector3(-0.8, -0.1, -0.55), "h": Vector3(-0.6, -0.3, 0.7), "lean": Vector3(-0.03, -0.02, -0.05)}],
+			[0.28, {"b": Vector3(0.32, -0.14, -0.3), "d": Vector3(0.35, 0.55, -0.76), "h": Vector3(-1, 0, 0), "lean": Vector3(0.02, 0.01, 0.03)}],
+			[0.42, {"b": Vector3(0.02, -0.26, -0.46), "d": Vector3(-0.75, 0.05, -0.66), "h": Vector3(-0.66, -0.1, 0.75), "lean": Vector3(-0.03, -0.02, -0.08)}],
+			[0.58, {"b": Vector3(-0.1, -0.32, -0.4), "d": Vector3(-0.8, -0.1, -0.55), "h": Vector3(-0.6, -0.3, 0.7), "lean": Vector3(-0.03, -0.02, -0.05)}],
 			[1.0, "idle"],
 		],
 	},
@@ -76,6 +77,10 @@ var _grip_l := 0.3
 var _hidden_r := 1.0
 var _hidden_l := 1.0
 var _bob := 0.0
+var curl_sign := -1.0
+var hand_flip := true
+var grip_f := 0.1
+var grip_p := 0.028
 var freeze_t := -1.0          # autotest: hold the current animation at a fixed fraction
 
 
@@ -324,6 +329,20 @@ func _process(dt: float) -> void:
 		if wall < 0.9:
 			b += Vector3(0.05, -0.12, 0.35) * (0.9 - wall) / 0.9
 		var xf := _tool_transform(b, d, h, float(cfg.scale))
+		# keep both grips within arm's reach: slide the whole tool toward the shoulders if needed
+		var max_reach := 0.5
+		var fix := Vector3.ZERO
+		var gr: Vector3 = xf * (tool_info.bottom + tool_info.axis * tool_info.length * float(cfg.u_r))
+		var sr: Vector3 = SHOULDER_R + lean
+		if gr.distance_to(sr) > max_reach:
+			fix = (sr - gr).normalized() * (gr.distance_to(sr) - max_reach)
+		if cfg.two_hand:
+			var glp: Vector3 = xf * (tool_info.bottom + tool_info.axis * tool_info.length * float(cfg.u_l))
+			var sl: Vector3 = SHOULDER_L + lean
+			if (glp + fix).distance_to(sl) > max_reach:
+				fix += (sl - (glp + fix)).normalized() * ((glp + fix).distance_to(sl) - max_reach)
+		if fix != Vector3.ZERO:
+			xf.origin += fix
 		if cfg.get("spin", false) and state == "draw":
 			var e := 1.0 - pow(1.0 - clampf(t, 0.0, 1.0), 2.0)
 			var grip_pt: Vector3 = xf * (tool_info.bottom + tool_info.axis * tool_info.length * float(cfg.u_r))
@@ -348,7 +367,7 @@ func _process(dt: float) -> void:
 	if tool_node and state == "holster" or state == "draw" and not cfg.is_empty():
 		pass
 	if target_r.is_empty():
-		target_r = _hand_frame(Vector3(0.21, -0.36, -0.36) + off, Vector3(-0.15, 0.2, -1.0), Vector3(-0.35, 1.0, 0.1), true)
+		target_r = _hand_frame(Vector3(0.19, -0.27, -0.4) + off, Vector3(-0.15, 0.3, -1.0), Vector3(-0.45, 1.0, 0.0), true)
 		grip_r = 0.35
 	# grab: right hand goes to the control
 	if player.grabbing and is_instance_valid(player.grabbing):
@@ -485,7 +504,7 @@ func _grip_target(g: Vector3, axis: Vector3, shoulder: Vector3, right: bool, alp
 	F = (F - A * A.dot(F)).normalized()
 	var T := A
 	var P := T.cross(F) if right else -T.cross(F)
-	var wrist := g - P * 0.035 - F * 0.085
+	var wrist := g - P * grip_p - F * grip_f
 	return {"w": wrist, "t": T, "f": F, "p": P}
 
 
@@ -536,7 +555,8 @@ func _solve(s: Skeleton3D, shoulder_cam: Vector3, frame: Dictionary, pole_cam: V
 	var fore_basis := _frame_basis(W - E, fore_q) * _frame_basis(rest_hand.origin - rest_fore.origin, q0).inverse() * rest_fore.basis
 	var sgn := 1.0 if s == skel_r else -1.0
 	var sem_rest := Basis(Vector3(-sgn, 0, 0), Vector3(0, 0, -1), Vector3(0, -1, 0))
-	var sem_target := Basis(Tv, Fv, Pv)
+	# measured on screen: the imported hand's palm/thumb are flipped about the finger axis vs. the Blender layout
+	var sem_target := Basis(-Tv, Fv, -Pv) if hand_flip else Basis(Tv, Fv, Pv)
 	var hand_basis := sem_target * sem_rest.inverse() * rest_hand.basis
 	var g_up := Transform3D(up_basis.orthonormalized(), S)
 	var g_fore := Transform3D(fore_basis.orthonormalized(), E)
@@ -569,14 +589,14 @@ func _curl(s: Skeleton3D, g: float) -> void:
 				continue
 			var ang: float = [1.25, 1.45, 1.0][i] * g + 0.12
 			var rest := s.get_bone_rest(bi)
-			s.set_bone_pose(bi, Transform3D(rest.basis * Basis(Vector3.RIGHT, -ang), rest.origin))
+			s.set_bone_pose(bi, Transform3D(rest.basis * Basis(Vector3.RIGHT, -ang * curl_sign), rest.origin))
 	for i in 3:
 		var bt := s.find_bone("thumb%d" % (i + 1))
 		if bt < 0:
 			continue
 		var rest_t := s.get_bone_rest(bt)
 		var sgn := 1.0 if s == skel_r else -1.0
-		s.set_bone_pose(bt, Transform3D(rest_t.basis * Basis(Vector3.RIGHT, -0.5 * g) * Basis(Vector3.FORWARD, 0.35 * g * sgn), rest_t.origin))
+		s.set_bone_pose(bt, Transform3D(rest_t.basis * Basis(Vector3.RIGHT, -0.5 * g * curl_sign) * Basis(Vector3.FORWARD, 0.35 * g * sgn), rest_t.origin))
 
 
 func _on_impact() -> void:

@@ -60,7 +60,8 @@ func _ready() -> void:
 	for i in 9:
 		_cells.append(_make_cell(hot, "player", i))
 	body.add_child(_spacer(6))
-	body.add_child(UI.label("Click to pick up  ·  Right-click: half / one  ·  Shift-click: quick move  ·  Click outside: drop", 13, UI.DIM, "Medium"))
+	var hint := UI.label("Click: pick up / place  ·  Right-click: half / one\nShift-click: quick move  ·  Click outside: drop", 13, UI.DIM, "Medium")
+	body.add_child(hint)
 	_chest_panel = _make_panel(row, "Crate")
 	_chest_title = (_chest_panel.get_child(0) as VBoxContainer).get_child(0) as Label
 	_chest_grid = GridContainer.new()

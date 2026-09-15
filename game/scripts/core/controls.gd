@@ -4,6 +4,7 @@ extends Node
 var sensitivity := 0.0024
 var fov := 80.0
 var quality := "high"
+var start := {}          # set by the title screen: {mode, seed, slot, load}
 
 const KEYS := {
 	"move_forward": [KEY_W], "move_back": [KEY_S], "move_left": [KEY_A], "move_right": [KEY_D],

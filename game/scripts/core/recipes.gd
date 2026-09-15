@@ -9,6 +9,7 @@ const CRAFT := [
 	{"out": "stone_pickaxe", "n": 1, "in": {"stick": 2, "stone": 3, "rope": 1}, "at": "", "time": 3.0, "sound": "craft_stone"},
 	{"out": "stone_knife", "n": 1, "in": {"stick": 1, "stone": 1, "fiber": 2}, "at": "", "time": 2.0, "sound": "craft_stone"},
 	{"out": "spear", "n": 1, "in": {"stick": 3, "stone": 1, "rope": 1}, "at": "", "time": 2.5, "sound": "craft_stone"},
+	{"out": "torch", "n": 2, "in": {"stick": 1, "fiber": 2, "coal": 1}, "at": "", "time": 1.5, "sound": "craft_rope"},
 	{"out": "bandage", "n": 1, "in": {"fiber": 4}, "at": "", "time": 1.5, "sound": "craft_rope"},
 	{"out": "campfire", "n": 1, "in": {"log": 3, "stone": 6}, "at": "", "time": 3.0, "sound": "craft_stone"},
 	{"out": "workbench", "n": 1, "in": {"log": 5, "stone": 4, "rope": 3}, "at": "", "time": 5.0, "sound": "craft_wood"},

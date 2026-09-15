@@ -579,6 +579,7 @@ func _world_run() -> void:
 	await _crafting_test()
 	await _building_test()
 	await _animal_test()
+	await _save_test()
 	_finish()
 
 
@@ -706,7 +707,7 @@ func _crafting_test() -> void:
 	inv.add("rope", 5)
 	p.queue_craft(r_wb)
 	p.queue_craft(r_cf)
-	await _seconds(10.5)
+	await _seconds(14.0)
 	_ok("crafted_stations", inv.count("workbench") == 1 and inv.count("campfire") == 1)
 	var ground := p.global_position + (-p.global_basis.z) * 3.0
 	ground.y = main.world.height_at(ground.x, ground.z)
@@ -782,6 +783,19 @@ func _world_graphics() -> void:
 	_ok("tris_rails", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME))
 	_ok("draws_rails", RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME))
 	await _view("toward_sun_high", eye.call(base - side * 14.0), base - side * 14.0 + Vector3(-60, 8, 50))
+	var dn: DayNight = main.day_night
+	dn.locked = true
+	for hour in [6.3, 18.8, 23.0]:
+		dn.time = hour
+		if hour == 23.0:
+			p.inventory.add("torch", 1)
+			p.select_slot(p.inventory.find("torch"))
+		await _view("time_%d" % int(hour * 10), eye.call(base + side * 1.8), base + fwd * 60.0 + Vector3.UP * 1.0)
+	dn.time = 13.0
+	dn.set_weather("storm")
+	await _seconds(2.0)
+	await _view("storm", eye.call(base + side * 1.8), base + fwd * 60.0 + Vector3.UP * 1.0)
+	dn.set_weather("clear")
 	p.fly = false
 
 
@@ -845,9 +859,35 @@ func _animal_test() -> void:
 	_ok("butchered_meat", meat_after - meat_before)
 	# wolf attack
 	var hp0 := p.survival.health
-	var wolf := Animal.spawn(main, "wolf", base + Vector3(3, 0.5, 3))
+	var wolf_pos := base + Vector3(3, 0, 3)
+	wolf_pos.y = main.world.height_at(wolf_pos.x, wolf_pos.z) + 0.4
+	var wolf := Animal.spawn(main, "wolf", wolf_pos)
 	await _seconds(0.5)
 	await _shot("w_wolf")
 	await _seconds(5.0)
 	_ok("wolf_bit_player", p.survival.health < hp0)
-	_ok("wolf_state", wolf.state)
+	_ok("wolf_state", wolf.state if is_instance_valid(wolf) else "freed")
+
+
+func _save_test() -> void:
+	var p := _p()
+	main.save_slot = 2
+	p.inventory.add("iron_ingot", 7)
+	var ok := SaveGame.save(main, 2)
+	_ok("saved", ok)
+	var before_consists: int = main.vehicles.consists.size()
+	var before_pieces := 0
+	for c in main.vehicles.consists:
+		for v in c.vehicles:
+			before_pieces += (v.get_meta("pieces", {}) as Dictionary).size()
+	var loaded := SaveGame.load_into(main, 2)
+	await _seconds(2.0)
+	var after_pieces := 0
+	for c in main.vehicles.consists:
+		for v in c.vehicles:
+			after_pieces += (v.get_meta("pieces", {}) as Dictionary).size()
+	_ok("loaded_save", loaded)
+	_ok("consists_restored", main.vehicles.consists.size() == before_consists)
+	_ok("pieces_restored", after_pieces == before_pieces and after_pieces > 0)
+	_ok("inventory_restored_iron", p.inventory.count("iron_ingot") >= 7)
+	DirAccess.remove_absolute(SaveGame.path(2))

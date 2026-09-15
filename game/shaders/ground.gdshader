@@ -16,6 +16,7 @@ uniform sampler2D gravel_diff : source_color, filter_linear_mipmap_anisotropic, 
 uniform sampler2D gravel_nor : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D macro_noise : hint_default_white, repeat_enable;
 uniform float scale = 0.2;
+global uniform float wetness;
 
 varying vec3 wpos;
 varying vec3 wnor;
@@ -51,11 +52,11 @@ void fragment() {
 	vec3 lush = vec3(0.7, 0.95, 0.6);
 	vec3 dry = vec3(0.95, 0.9, 0.72);
 	a *= mix(lush, dry, smoothstep(0.35, 0.9, n2)) * mix(0.72, 0.98, n1);
-	ALBEDO = a;
+	ALBEDO = a * mix(1.0, 0.62, wetness * (1.0 - rock * 0.3));
 	NORMAL_MAP = an;
 	NORMAL_MAP_DEPTH = 1.2;
 	vec3 arm = texture(grass_arm, uv).rgb;
-	ROUGHNESS = mix(mix(arm.g, 0.9, rock), 0.95, g);
+	ROUGHNESS = mix(mix(mix(arm.g, 0.9, rock), 0.95, g), 0.28, wetness * 0.75);
 	AO = mix(arm.r, 1.0, 0.3);
 	AO_LIGHT_AFFECT = 0.5;
 }

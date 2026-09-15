@@ -233,6 +233,20 @@ func _switch_to_pending() -> void:
 		if tool_node is MeshInstance3D:
 			(tool_node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		tool_info = _analyse(tool_node, current_id)
+		if Items.def(current_id).get("light", false):
+			var fl := OmniLight3D.new()
+			fl.light_color = Color(1.0, 0.62, 0.3)
+			fl.omni_range = 11.0
+			fl.light_energy = 1.6
+			fl.shadow_enabled = true
+			tool_node.add_child(fl)
+			fl.position = Vector3(0, 0.3, 0)
+			var tmp := Station.new()
+			var flame := tmp._flames(Vector3.ZERO, true)
+			flame.reparent(tool_node, false)
+			tmp.free()
+			flame.position = Vector3(0, 0.26, 0)
+			flame.emitting = true
 	state = "draw" if current_id != "" else "empty"
 	t = 0.0
 	var sound := str(Items.def(current_id).get("equip", "equip_hand"))

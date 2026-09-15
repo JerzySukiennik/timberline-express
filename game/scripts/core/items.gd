@@ -34,6 +34,7 @@ const DEFS := {
 	"raw_meat": {"name": "Raw Meat", "kind": "food", "stack": 10, "model": M + "items/raw_meat.glb", "food": 14.0, "water": 0.0, "heal": -6.0, "poison": 0.4, "eat": "eat_meat"},
 	"cooked_meat": {"name": "Cooked Meat", "kind": "food", "stack": 10, "model": M + "items/cooked_meat.glb", "food": 42.0, "water": 0.0, "heal": 8.0, "eat": "eat_meat"},
 	"bandage": {"name": "Bandage", "kind": "food", "stack": 10, "model": M + "items/bandage.glb", "food": 0.0, "water": 0.0, "heal": 30.0, "eat": "craft_rope"},
+	"torch": {"name": "Torch", "kind": "light", "stack": 5, "model": M + "items/stick.glb", "light": true},
 	"bucket": {"name": "Bucket", "kind": "container", "stack": 1, "model": M + "props/wooden_bucket_01.glb"},
 	"bucket_water": {"name": "Bucket of Pond Water", "kind": "drink", "stack": 1, "model": M + "props/wooden_bucket_01.glb", "water": 45.0, "food": 0.0, "heal": 0.0, "poison": 0.2, "leaves": "bucket", "eat": "drink_gulp"},
 	"bucket_boiled": {"name": "Bucket of Boiled Water", "kind": "drink", "stack": 1, "model": M + "props/wooden_bucket_01.glb", "water": 55.0, "food": 0.0, "heal": 2.0, "leaves": "bucket", "eat": "drink_gulp"},

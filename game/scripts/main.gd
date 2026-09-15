@@ -19,6 +19,10 @@ var yard_mode := true
 var world: ChunkWorld
 var gen: WorldGen
 var world_seed := 0
+var save_slot := 0
+var distance_km := 0.0
+var _autosave := 300.0
+var _last_lead_pos := Vector3.INF
 var infinite_stamina := false
 var menu_open := false
 var sun: DirectionalLight3D
@@ -28,7 +32,12 @@ var _music_timer := 40.0
 
 func _ready() -> void:
 	randomize()
-	yard_mode = "--yard" in OS.get_cmdline_user_args() or "--autotest" in OS.get_cmdline_user_args() and not "--world" in OS.get_cmdline_user_args()
+	var args := OS.get_cmdline_user_args()
+	if "--autotest" in args or "--yard" in args or "--world" in args:
+		yard_mode = "--yard" in args or ("--autotest" in args and not "--world" in args)
+	else:
+		yard_mode = str(Controls.start.get("mode", "world")) == "yard"
+	save_slot = int(Controls.start.get("slot", Controls.start.get("load", 0)))
 	_environment()
 	network = TrackNetwork.new()
 	network.name = "Track"
@@ -51,6 +60,11 @@ func _ready() -> void:
 		animals = AnimalDirector.new()
 		animals.main = self
 		add_child(animals)
+	day_night = DayNight.new()
+	day_night.main = self
+	add_child(day_night)
+	if yard_mode:
+		day_night.locked = true
 	grass_field = GrassField.new()
 	grass_field.world = terrain
 	grass_field.focus = player
@@ -59,6 +73,9 @@ func _ready() -> void:
 	if world:
 		world.focus = player
 		world.extra_focus = [handcar]
+		if Controls.start.has("load"):
+			SaveGame.load_into(self, int(Controls.start.load))
+			player.global_position = spawn_point
 		_begin_loading()
 	if "--autotest" in OS.get_cmdline_user_args():
 		var at: Node = load("res://scripts/autotest.gd").new()
@@ -88,6 +105,14 @@ func _build_yard() -> void:
 
 func _build_world() -> void:
 	world_seed = randi() % 1000000 if not "--seed" in str(OS.get_cmdline_user_args()) else 424242
+	if Controls.start.has("seed"):
+		world_seed = int(Controls.start.seed)
+	if Controls.start.has("load"):
+		var f := FileAccess.open(SaveGame.path(int(Controls.start.load)), FileAccess.READ)
+		if f:
+			var d: Variant = JSON.parse_string(f.get_as_text())
+			if d is Dictionary:
+				world_seed = int(d.seed)
 	gen = WorldGen.new(world_seed)
 	world = ChunkWorld.new()
 	world.name = "World"
@@ -238,6 +263,7 @@ var environment: Environment
 var _post_mat: ShaderMaterial
 var grass_field: GrassField
 var animals: AnimalDirector
+var day_night: DayNight
 
 const QUALITY := {
 	"low": {"ssao": false, "ssao_q": 0, "volumetric": false, "glow": false, "rays": false, "splits": 2, "shadow_dist": 60.0, "grass": 0.0, "scale": 0.7, "taa": false},
@@ -630,6 +656,17 @@ func _process(dt: float) -> void:
 	if world:
 		if loading:
 			_check_loaded()
+		else:
+			_autosave -= dt
+			if _autosave <= 0.0:
+				_autosave = 300.0
+				if SaveGame.save(self, save_slot):
+					hud.toast("Game saved")
+			if not vehicles.consists.is_empty():
+				var lead_pos: Vector3 = vehicles.consists[0].lead().global_position
+				if _last_lead_pos != Vector3.INF:
+					distance_km += Vector2(lead_pos.x - _last_lead_pos.x, lead_pos.z - _last_lead_pos.z).length() / 1000.0
+				_last_lead_pos = lead_pos
 		_stands_timer -= dt
 		if _stands_timer <= 0.0:
 			_stands_timer = 1.0
@@ -691,8 +728,23 @@ func _build_menu() -> void:
 			apply_quality(preset)
 			Controls.save())
 		qrow.add_child(b)
+	if not yard_mode:
+		var save_b := _menu_button("Save game")
+		save_b.pressed.connect(func() -> void:
+			if SaveGame.save(self, save_slot):
+				toast("Game saved"))
+		col.add_child(save_b)
+	var title_b := _menu_button("Save & quit to title" if not yard_mode else "Quit to title")
+	title_b.pressed.connect(func() -> void:
+		if not yard_mode:
+			SaveGame.save(self, save_slot)
+		get_tree().change_scene_to_file("res://scenes/title.tscn"))
+	col.add_child(title_b)
 	var quit := _menu_button("Quit to desktop")
-	quit.pressed.connect(func() -> void: get_tree().quit())
+	quit.pressed.connect(func() -> void:
+		if not yard_mode:
+			SaveGame.save(self, save_slot)
+		get_tree().quit())
 	col.add_child(quit)
 	var credits := UI.label(_credits_text(), 13, UI.DIM, "Medium")
 	credits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

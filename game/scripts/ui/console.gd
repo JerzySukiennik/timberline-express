@@ -588,6 +588,14 @@ func _register_commands() -> void:
 				return ""
 		return "!Unknown target")
 
+	_reg("time", [{"name": "hour", "options": ["6", "12", "18", "21", "0"]}], "Set the time of day (0-24).", func(a: Array) -> String:
+		main.day_night.time = clampf(_num(a[0], 12.0), 0.0, 24.0)
+		return "Time %02d:00" % int(main.day_night.time))
+
+	_reg("weather", [{"name": "type", "options": ["clear", "cloudy", "rain", "storm"]}], "Change the weather.", func(a: Array) -> String:
+		main.day_night.set_weather(str(a[0]))
+		return "Weather " + str(a[0]))
+
 	_reg("reload", [], "Restart the level.", func(_a: Array) -> String:
 		main.get_tree().reload_current_scene.call_deferred()
 		return "")

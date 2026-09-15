@@ -244,6 +244,7 @@ func _process(dt: float) -> void:
 			(b.fill as ColorRect).color = UI.RUST if v < 20.0 else b.col
 		_vignette.modulate.a = lerpf(_vignette.modulate.a, clampf((30.0 - sv.health) / 30.0, 0.0, 1.0), dt * 3.0)
 	if player.riding:
-		_speed.text = "%s  ·  %d km/h" % [player.riding.display_name, int(absf(player.riding.consist.v) * 3.6)]
+		var km: float = player.main.distance_km if player.main else 0.0
+		_speed.text = "%s  ·  %d km/h  ·  %.1f km" % [player.riding.display_name, int(absf(player.riding.consist.v) * 3.6), km]
 	else:
 		_speed.text = ""

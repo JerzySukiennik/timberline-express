@@ -6,7 +6,7 @@ config_version=5
 
 config/name="Timberline Express"
 config/description="Co-op survival on rails in a mountain forest."
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 boot_splash/show_image=false
 boot_splash/bg_color=Color(0.07, 0.08, 0.08, 1)
@@ -43,3 +43,10 @@ environment/ssao/half_size=true
 lights_and_shadows/directional_shadow/size=4096
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
 textures/default_filters/anisotropic_filtering_level=3
+
+[shader_globals]
+
+wetness={
+"type": "float",
+"value": 0.0
+}

@@ -81,3 +81,22 @@ func _edge_north(i: int, j: int) -> TrackNetwork.TrackSegment:
 func start_segment() -> TrackNetwork.TrackSegment:
 	ensure(Vector3.ZERO, 1)
 	return _edges.get("e:0:0")
+
+
+func key_of(seg: TrackNetwork.TrackSegment) -> String:
+	for k in _edges:
+		if _edges[k] == seg:
+			return k
+	return ""
+
+
+## Rebuild the edge for a saved key (and its regions) and return the segment.
+func segment_for_key(k: String) -> TrackNetwork.TrackSegment:
+	if _edges.has(k):
+		return _edges[k]
+	var parts := k.split(":")
+	var i := int(parts[1])
+	var j := int(parts[2])
+	var pos := Vector3(i * WorldGen.REGION, 0, -j * WorldGen.REGION)
+	ensure(pos, 1)
+	return _edges.get(k)

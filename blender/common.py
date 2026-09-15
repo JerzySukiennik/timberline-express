@@ -43,7 +43,18 @@ def pbr(name, diff=None, nor=None, arm=None, alpha=None, color=(0.8,0.8,0.8,1), 
         m.surface_render_method = "DITHERED"
     return m
 
+MAX_TEX = 1024
+
+
+def _shrink_images(limit):
+    for im in bpy.data.images:
+        if im.size[0] > limit or im.size[1] > limit:
+            f = limit / max(im.size[0], im.size[1])
+            im.scale(max(1, int(im.size[0] * f)), max(1, int(im.size[1] * f)))
+
+
 def export_glb(path, objs=None, **kw):
+    _shrink_images(kw.pop("max_tex", 512 if any(k in path for k in ("/items/", "/tools/", "/props/", "/rocks/", "/plants/")) else MAX_TEX))
     bpy.ops.object.select_all(action="DESELECT")
     for o in (objs or bpy.context.scene.objects): o.select_set(True)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_apply=True,

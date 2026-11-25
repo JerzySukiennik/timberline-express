@@ -35,6 +35,10 @@ static func spawn(parent: Node, id: String, n: int, pos: Vector3) -> Pickup:
 	parent.add_child(p)
 	p.global_position = pos
 	p.angular_velocity = Vector3(randf_range(-2, 2), randf_range(-2, 2), randf_range(-2, 2))
+	if Net.local_spawn_blocked():
+		p.queue_free()
+	elif NetSync.hosting():
+		NetSync.inst.register(p, "pickup")
 	return p
 
 

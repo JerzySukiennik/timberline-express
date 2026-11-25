@@ -5,7 +5,12 @@ extends RefCounted
 static var _mats := {}
 
 
-static func burst(parent: Node, pos: Vector3, normal: Vector3, kind: String, amount := 14) -> void:
+static func burst(parent: Node, pos: Vector3, normal: Vector3, kind: String, amount := 14, from_net := false) -> void:
+	if not from_net:
+		if Net.applying > 0 and Net.is_client_online():
+			return
+		if NetSync.hosting():
+			NetSync.inst.fx(pos, normal, kind, amount)
 	var p := GPUParticles3D.new()
 	p.one_shot = true
 	p.amount = amount

@@ -14,6 +14,8 @@ var net: TrackNetwork
 var tracks: InfiniteTracks
 var focus: Node3D
 var extra_focus: Array = []       # vehicles keep their rail regions generated
+var remote_focus: Array = []      # host: other players' proxies get near-LOD chunks (collision, resources)
+var _remote_cells: Array = []
 var removed := {}                 # "cx,cz" -> {"t12": true, "b1": true, ...}
 var chunks := {}                  # Vector2i -> Chunk
 var _pending := {}                # Vector2i -> {"lod", "task"}
@@ -307,15 +309,25 @@ func _process(dt: float) -> void:
 		_track_timer = 0.5
 		_update_tracks()
 	var c := cell(focus.global_position)
-	if c != _last_cell:
+	var rc: Array = []
+	for f in remote_focus:
+		if is_instance_valid(f):
+			rc.append(cell((f as Node3D).global_position))
+	if c != _last_cell or rc != _remote_cells:
+		var moved := c != _last_cell
 		_last_cell = c
+		_remote_cells = rc
 		_schedule(c)
-		_update_horizon()
+		if moved:
+			_update_horizon()
 	_integrate_results()
 
 
 func _update_tracks() -> void:
 	var points: Array = [focus.global_position]
+	for f in remote_focus:
+		if is_instance_valid(f):
+			points.append((f as Node3D).global_position)
 	for v in extra_focus:
 		if is_instance_valid(v):
 			points.append((v as Node3D).global_position)
@@ -335,6 +347,14 @@ func _update_tracks() -> void:
 			seg.visual = null
 
 
+func _want_all(c: Vector2i, center: Vector2i) -> int:
+	var lod := _want_lod(c, center)
+	for rc in _remote_cells:
+		if maxi(absi(c.x - rc.x), absi(c.y - rc.y)) <= RINGS[0]:
+			return 0
+	return lod
+
+
 func _want_lod(c: Vector2i, center: Vector2i) -> int:
 	var r := maxi(absi(c.x - center.x), absi(c.y - center.y))
 	for i in RINGS.size():
@@ -349,7 +369,11 @@ func _schedule(center: Vector2i) -> void:
 	for dz in range(-outer, outer + 1):
 		for dx in range(-outer, outer + 1):
 			var k := center + Vector2i(dx, dz)
-			want[k] = _want_lod(k, center)
+			want[k] = _want_all(k, center)
+	for rc in _remote_cells:
+		for dz2 in range(-RINGS[0], RINGS[0] + 1):
+			for dx2 in range(-RINGS[0], RINGS[0] + 1):
+				want[rc + Vector2i(dx2, dz2)] = 0
 	for k in chunks.keys():
 		if not want.has(k):
 			var ch: Chunk = chunks[k]
@@ -406,7 +430,7 @@ func _integrate_results() -> void:
 		if not _pending.has(k) or _pending[k].lod != data.lod:
 			continue
 		_pending.erase(k)
-		if _want_lod(k, center) != data.lod:
+		if _want_all(k, center) != data.lod:
 			continue
 		_instantiate(data)
 		budget -= 1
@@ -949,11 +973,56 @@ func harvest(ch: Chunk, id: String) -> void:
 	if not removed.has(key):
 		removed[key] = {}
 	removed[key][id] = true
+	if NetSync.hosting():
+		NetSync.inst.op("harvest", [ch.key.x, ch.key.y, id])
 	# rebuild quickly at the same LOD
 	var rect := Rect2(ch.key.x * SIZE - 60.0, ch.key.y * SIZE - 60.0, SIZE + 120.0, SIZE + 120.0)
 	var job := {"key": ch.key, "lod": ch.lod, "samples": net.samples_in_rect(rect), "removed": (removed[key] as Dictionary).duplicate()}
 	_pending[ch.key] = {"lod": ch.lod}
 	_tasks.append(WorkerThreadPool.add_task(_build_job.bind(job), false, "chunk rebuild"))
+
+
+## Harvest by chunk key whether or not the chunk is streamed here.
+func harvest_key(k: Vector2i, id: String) -> void:
+	var ch: Chunk = chunks.get(k)
+	if ch:
+		harvest(ch, id)
+		return
+	var key := "%d,%d" % [k.x, k.y]
+	if not removed.has(key):
+		removed[key] = {}
+	removed[key][id] = true
+	if NetSync.hosting():
+		NetSync.inst.op("harvest", [k.x, k.y, id])
+
+
+## Client: the host harvested something; hide it now and rebuild the chunk without it.
+func apply_harvest(k: Vector2i, id: String) -> void:
+	var key := "%d,%d" % [k.x, k.y]
+	if (removed.get(key, {}) as Dictionary).has(id):
+		return
+	var ch: Chunk = chunks.get(k)
+	if ch == null:
+		if not removed.has(key):
+			removed[key] = {}
+		removed[key][id] = true
+		return
+	if ch.body and is_instance_valid(ch.body):
+		var rb := ch.body as ResourceBody
+		var raw := id.trim_prefix("p")
+		for oid in rb.owners.keys():
+			var info: Dictionary = rb.owners[oid]
+			if str(info.data.id) != raw:
+				continue
+			if id.begins_with("p") and str(info.kind) == "bush":
+				info.data["berry"] = false
+				hide_slot(ch, info.data.get("slot", []))
+			elif not id.begins_with("p") or str(info.kind) != "bush":
+				hide_slot(ch, info.get("slot", []))
+				rb.shape_owner_clear_shapes(oid)
+				rb.owners.erase(oid)
+			break
+	harvest(ch, id)
 
 
 # ---------------------------------------------------------------- horizon

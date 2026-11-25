@@ -19,6 +19,8 @@ const EYE_CROUCH := 1.02
 const REACH := 2.5
 
 var main: Node
+var net_peer := 0             # host-side proxy of a remote player (0 = the local player)
+var remote_forward := false
 var head: Node3D
 var camera: Camera3D
 var viewmodel: ViewModel
@@ -128,7 +130,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var rel := (event as InputEventMouseMotion).relative
 		if grabbing:
-			grabbing.grab_drag.call(self, rel)
+			_icall(grabbing, "gdrag", rel)
 			mouse_delta += rel * 0.15
 			return
 		rotation.y -= rel.x * Controls.sensitivity
@@ -151,7 +153,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_end_grab()
 		_release_bow()
 	if event.is_action_pressed("secondary") and aim and aim.on_secondary.is_valid():
-		aim.on_secondary.call(self)
+		_icall(aim, "sec")
 	elif event.is_action_pressed("secondary") and equipped_id == "hammer" and main and main.has_method("open_build_menu"):
 		main.open_build_menu()
 	if event.is_action_pressed("rotate_build") and equipped_id == "hammer":
@@ -159,8 +161,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		_e_held = true
 		if aim and aim.on_use.is_valid():
-			aim.on_use.call(self)
+			_icall(aim, "use")
 			viewmodel.gesture("press")
+		elif shape_target and is_instance_valid(shape_target) and NetSync.remote():
+			NetSync.inst.request("shape", {"ref": NetSync.inst.target_ref(shape_target, shape_idx)})
+			Sfx.play("pickup", -6.0)
+			viewmodel.gesture("grab")
 		elif shape_target and is_instance_valid(shape_target) and shape_target.use_shape(shape_idx, self):
 			viewmodel.gesture("grab")
 		elif _pickup_target():
@@ -170,7 +176,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_released("interact"):
 		_e_held = false
 		if aim and aim.on_release.is_valid():
-			aim.on_release.call(self)
+			_icall(aim, "rel")
 	if event.is_action_pressed("drop") and equipped_id != "hammer":
 		drop_selected()
 
@@ -179,7 +185,7 @@ func _primary_pressed() -> void:
 	if aim and aim.is_grab():
 		grabbing = aim
 		if grabbing.grab_start.is_valid():
-			grabbing.grab_start.call(self)
+			_icall(grabbing, "gstart")
 		return
 	if Items.def(equipped_id).get("kind", "") == "placeable":
 		placer.try_place()
@@ -204,8 +210,23 @@ func _primary_pressed() -> void:
 func _end_grab() -> void:
 	if grabbing:
 		if grabbing.grab_end.is_valid():
-			grabbing.grab_end.call(self)
+			_icall(grabbing, "gend")
 		grabbing = null
+
+
+## Runs an interactable callback here, or asks the host to run it when playing as a client.
+func _icall(it: Interactable, action: String, arg: Variant = null) -> void:
+	if NetSync.remote():
+		NetSync.inst.request_interact(it, action, arg)
+		return
+	match action:
+		"use": it.on_use.call(self)
+		"sec": it.on_secondary.call(self)
+		"rel": it.on_release.call(self)
+		"hold": it.on_hold.call(self, arg)
+		"gstart": it.grab_start.call(self)
+		"gend": it.grab_end.call(self)
+		"gdrag": it.grab_drag.call(self, arg)
 
 
 func select_slot(i: int) -> void:
@@ -338,7 +359,7 @@ func _physics_process(dt: float) -> void:
 		if not Input.is_action_pressed("primary") and not "--autotest" in OS.get_cmdline_user_args():
 			_release_bow()
 	if _e_held and aim and aim.on_hold.is_valid():
-		aim.on_hold.call(self, dt)
+		_icall(aim, "hold", dt)
 	mouse_delta = mouse_delta.lerp(Vector2.ZERO, clampf(dt * 12.0, 0.0, 1.0))
 
 
@@ -515,6 +536,17 @@ func _pickup_target() -> bool:
 	var pk := _aimed_pickup()
 	if pk == null:
 		return false
+	if NetSync.remote():
+		if not pk.has_meta("nid"):
+			return false
+		NetSync.inst.request("pickup", {"n": str(pk.get_meta("nid"))})
+		Sfx.play("pickup", -6.0)
+		viewmodel.gesture("grab")
+		return true
+	return take_pickup(pk)
+
+
+func take_pickup(pk: Pickup) -> bool:
 	var left := pk.count
 	if pk.dur >= 0:
 		var idx := selected_slot if inventory.get_slot(selected_slot).is_empty() else inventory.find("")
@@ -545,6 +577,10 @@ func drop_selected() -> void:
 		return
 	var n := int(s.count) if Input.is_key_pressed(KEY_CTRL) else 1
 	inventory.remove_at(selected_slot, n)
+	if NetSync.remote():
+		NetSync.inst.request("drop", {"id": str(s.id), "n": n, "dur": int(s.get("dur", -1)), "pos": camera.global_position - camera.global_basis.z * 0.7 + Vector3.DOWN * 0.3, "vel": -camera.global_basis.z * 3.0 + velocity})
+		Sfx.play("slot_drop", -8.0)
+		return
 	var p := Pickup.spawn(main, str(s.id), n, camera.global_position - camera.global_basis.z * 0.7 + Vector3.DOWN * 0.3)
 	p.dur = int(s.get("dur", -1))
 	p.linear_velocity = -camera.global_basis.z * 3.0 + velocity
@@ -643,9 +679,17 @@ func tool_hit(id: String) -> void:
 		return
 	var col: Object = hit.collider
 	var valid := false
-	if OS.is_debug_build() or "--autotest" in OS.get_cmdline_user_args():
+	if NetSync.remote() and (col.has_method("tool_hit_shape") or col.has_method("tool_hit")):
+		var ref := NetSync.inst.target_ref(col, int(hit.shape))
+		if not ref.is_empty():
+			NetSync.inst.request("hit", {"ref": ref, "tool": id, "point": hit.position, "normal": hit.normal})
+			valid = true
+			col = null
+	if col and (OS.is_debug_build() or "--autotest" in OS.get_cmdline_user_args()):
 		print("[hit] ", id, " -> ", (col as Node).name, " ", col.get_class())
-	if col.has_method("tool_hit_shape"):
+	if col == null:
+		pass
+	elif col.has_method("tool_hit_shape"):
 		valid = col.tool_hit_shape(id, hit.position, hit.normal, self, int(hit.shape))
 	elif col.has_method("tool_hit"):
 		valid = col.tool_hit(id, hit.position, hit.normal, self)
@@ -786,7 +830,10 @@ func _release_bow() -> void:
 	if pwr < 0.2 or Items.tool_type(equipped_id) != "bow" or not inventory.remove("arrow", 1):
 		return
 	var dir := -camera.global_basis.z
-	Arrow.fire(get_tree().current_scene, camera.global_position + dir * 0.6 + camera.global_basis.y * -0.05, dir, lerpf(18.0, 62.0, pwr), self, pwr)
+	var from := camera.global_position + dir * 0.6 + camera.global_basis.y * -0.05
+	Arrow.fire(get_tree().current_scene, from, dir, lerpf(18.0, 62.0, pwr), self, pwr)
+	if NetSync.remote():
+		NetSync.inst.request("arrow", {"from": from, "dir": dir, "speed": lerpf(18.0, 62.0, pwr), "pwr": pwr})
 	Sfx.play("bow_release", -2.0)
 	Sfx.play("arrow_whoosh", -8.0)
 	viewmodel.impulse(Vector3(0, 0, 0.05))

@@ -125,6 +125,9 @@ func _manage(v: RailVehicle, hit: Dictionary, dt: float) -> void:
 			var cost: Dictionary = Building.PIECES[p.piece].cost
 			for id in cost:
 				player.inventory.add(id, int(ceil(int(cost[id]) * 0.5)))
+			if NetSync.remote():
+				NetSync.inst.request("takeapart", {"veh": NetSync.inst.nid_of(v), "key": p.key()})
+				return
 			Sfx.play_at("build_remove", p.global_position, -2.0)
 			Building.remove(p)
 	else:
@@ -139,6 +142,10 @@ func primary() -> bool:
 			var cost: Dictionary = Building.PIECES[selected].cost
 			for id in cost:
 				player.inventory.remove(id, int(cost[id]))
+			if NetSync.remote():
+				NetSync.inst.request("build", {"veh": NetSync.inst.nid_of(_vehicle), "piece": selected, "cell": [_cell.x, _cell.y, _cell.z], "edge": _edge})
+				player.viewmodel.request_swing()
+				return true
 			var p := Building.build(_vehicle, selected, _cell, _edge)
 			Sfx.play_at("build_place_wood", p.global_position + Vector3.UP, -1.0)
 			player.viewmodel.request_swing()
@@ -151,6 +158,10 @@ func primary() -> bool:
 	if not hit.is_empty() and hit.collider is RailVehicle:
 		var p2 := Building.piece_from_shape(hit.collider, int(hit.shape))
 		if p2 and p2.hp < 100.0 and player.inventory.remove("plank", 1):
+			if NetSync.remote():
+				NetSync.inst.request("repair", {"veh": NetSync.inst.nid_of(hit.collider), "key": p2.key()})
+				player.viewmodel.request_swing()
+				return true
 			p2.hp = minf(100.0, p2.hp + 35.0)
 			Sfx.play_at("hammer_hit", hit.position, -2.0)
 			player.viewmodel.request_swing()

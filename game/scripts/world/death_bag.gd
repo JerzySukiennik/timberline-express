@@ -7,6 +7,8 @@ var inventory := Inventory.new(29)
 
 static func spawn(main: Node, pos: Vector3, from: Inventory) -> DeathBag:
 	var bag := DeathBag.new()
+	if NetSync.hosting():
+		NetSync.inst.register(bag, "bag")
 	bag.collision_layer = 1
 	for i in from.size():
 		bag.inventory.slots[i] = from.get_slot(i).duplicate()
@@ -36,6 +38,8 @@ static func spawn(main: Node, pos: Vector3, from: Inventory) -> DeathBag:
 				if not s.is_empty():
 					return
 			bag.queue_free())
+	if Net.local_spawn_blocked():
+		bag.queue_free()
 	return bag
 
 

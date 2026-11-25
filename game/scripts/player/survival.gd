@@ -52,6 +52,9 @@ func _process(dt: float) -> void:
 func damage(amount: float, cause: String, feedback := true) -> void:
 	if dead or god or amount <= 0.0:
 		return
+	if player and player.net_peer != 0:
+		NetSync.inst.hurt_peer(player.net_peer, amount, cause)
+		return
 	health -= amount
 	if feedback:
 		damaged.emit(amount, cause)

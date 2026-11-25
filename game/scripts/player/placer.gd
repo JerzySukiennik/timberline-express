@@ -93,6 +93,9 @@ func try_place() -> bool:
 	if slot.is_empty() or slot.id != item_id:
 		return false
 	player.inventory.remove_at(player.selected_slot, 1)
+	if NetSync.remote():
+		NetSync.inst.request("place", {"kind": str(Items.def(item_id).station), "xf": NetSync._xf(_xf), "veh": NetSync.inst.nid_of(_target) if _target is RailVehicle else ""})
+		return true
 	Station.place(main, Items.def(item_id).station, _xf, _target)
 	Sfx.play_at("build_place_wood", _xf.origin, -2.0)
 	return true

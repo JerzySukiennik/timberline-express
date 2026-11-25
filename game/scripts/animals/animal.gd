@@ -32,6 +32,10 @@ static func spawn(main_node: Node, kind: String, pos: Vector3) -> Animal:
 	a.main = main_node
 	main_node.add_child(a)
 	a.global_position = pos
+	if Net.local_spawn_blocked():
+		a.queue_free()
+	elif NetSync.hosting():
+		NetSync.inst.register(a, "animal")
 	return a
 
 
@@ -124,6 +128,13 @@ func _physics_process(dt: float) -> void:
 		move_and_slide()
 		return
 	var player: Node3D = main.player if main else null
+	if NetSync.hosting():
+		var best := INF
+		for pl in NetSync.inst.players():
+			var dd := global_position.distance_squared_to((pl as Node3D).global_position)
+			if dd < best and not pl.survival.dead:
+				best = dd
+				player = pl
 	_attack_cd = maxf(0.0, _attack_cd - dt)
 	_call_cd = maxf(0.0, _call_cd - dt)
 	var want := Vector3.ZERO

@@ -6,6 +6,7 @@ var velocity := Vector3.ZERO
 var shooter: Node
 var power := 1.0
 var _life := 8.0
+var cosmetic := false
 
 
 static func fire(scene: Node, from: Vector3, dir: Vector3, speed: float, shooter_node: Node, pwr: float) -> Arrow:
@@ -19,6 +20,9 @@ static func fire(scene: Node, from: Vector3, dir: Vector3, speed: float, shooter
 	a.add_child(m)
 	m.rotation.x = -PI * 0.5
 	a.look_at(from + dir, Vector3.UP)
+	a.cosmetic = Net.is_client_online()
+	if NetSync.hosting():
+		NetSync.inst.op("arrow", [from, dir, speed], NetSync.inst.acting_peer())
 	return a
 
 
@@ -34,6 +38,9 @@ func _physics_process(dt: float) -> void:
 	if shooter is CollisionObject3D:
 		q.exclude = [(shooter as CollisionObject3D).get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty() and cosmetic:
+		queue_free()
+		return
 	if not hit.is_empty():
 		var col: Object = hit.collider
 		if col is Animal:

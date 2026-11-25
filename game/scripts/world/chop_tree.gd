@@ -36,6 +36,12 @@ static func create(parent: Node, pos: Vector3, variant := "fir_b", scale := 1.0)
 	cs.shape = cyl
 	cs.position.y = t.height * 0.5
 	t.add_child(cs)
+	t.set_meta("variant", variant)
+	t.set_meta("scale", scale)
+	if Net.local_spawn_blocked():
+		t.queue_free()
+	elif NetSync.hosting():
+		NetSync.inst.register(t, "tree")
 	return t
 
 
@@ -62,6 +68,8 @@ func tool_hit(tool_id: String, point: Vector3, normal: Vector3, player: Node) ->
 func _fall(away: Vector3) -> void:
 	away.y = 0
 	_fall_dir = away.normalized() if away.length() > 0.01 else Vector3.FORWARD
+	if NetSync.hosting() and has_meta("nid"):
+		NetSync.inst.op("tree_fall", [str(get_meta("nid")), away])
 	_base = global_position
 	Sfx.play_at("tree_creak", global_position + Vector3.UP * 3.0, 2.0, 0.05)
 	var body := RigidBody3D.new()
@@ -101,12 +109,14 @@ func _physics_process(dt: float) -> void:
 	_fall_time += dt
 	if not _landed and _fall_time > 0.8 and (_falling.get_contact_count() > 0 and _falling.linear_velocity.length() < 3.0 or _fall_time > 4.0):
 		_landed = true
+		Net.mute += 1
 		Sfx.play_at("tree_fall", _falling.global_position + _falling.global_basis.y * height * 0.5, 4.0, 0.05)
 		Fx.burst(get_tree().current_scene, _falling.global_position + _falling.global_basis.y * height * 0.5, Vector3.UP, "dust", 12)
 		Fx.burst(get_tree().current_scene, _falling.global_position + _falling.global_basis.y * height * 0.6, Vector3.UP, "leaf", 40)
 		var pl := get_tree().get_first_node_in_group("player")
 		if pl and (pl as Node3D).global_position.distance_to(_falling.global_position) < 20.0:
 			pl.shake(0.6)
+		Net.mute -= 1
 	if _landed and _fall_time > 3.2:
 		var scene := get_tree().current_scene
 		var n := clampi(int(height / 2.2), 3, 6)

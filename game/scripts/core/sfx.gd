@@ -74,6 +74,8 @@ func stream(base: String) -> AudioStream:
 
 
 func play(cue: String, volume_db := 0.0, pitch_spread := 0.05, pitch := 1.0) -> void:
+	if NetSync.hosting() and NetSync.inst.acting_peer() != 0:
+		return
 	var list: Array = _streams.get(cue, [])
 	if list.is_empty():
 		return
@@ -87,7 +89,12 @@ func play(cue: String, volume_db := 0.0, pitch_spread := 0.05, pitch := 1.0) -> 
 	p.play()
 
 
-func play_at(cue: String, pos: Vector3, volume_db := 0.0, pitch_spread := 0.1, pitch := 1.0, max_dist := 60.0) -> void:
+func play_at(cue: String, pos: Vector3, volume_db := 0.0, pitch_spread := 0.1, pitch := 1.0, max_dist := 60.0, from_net := false) -> void:
+	if not from_net:
+		if Net.applying > 0 and Net.is_client_online():
+			return
+		if NetSync.hosting():
+			NetSync.inst.sfx(cue, pos, volume_db, pitch_spread, pitch, max_dist)
 	var list: Array = _streams.get(cue, [])
 	var scene := get_tree().current_scene
 	if list.is_empty() or scene == null:

@@ -33,6 +33,8 @@ static func place(main_node: Node, kind_id: String, xf: Transform3D, on: Node) -
 	if kind_id == "bed":
 		main_node.beds.append(s)
 	main_node.stations.append(s)
+	if NetSync.hosting():
+		NetSync.inst.register(s, "station")
 	return s
 
 
@@ -202,6 +204,9 @@ func _process(dt: float) -> void:
 	var input := inventory.get_slot(0)
 	var fuel := inventory.get_slot(1)
 	var out := inventory.get_slot(2)
+	if Net.is_client_online():
+		_visuals(dt, burn > 0.0)
+		return
 	var recipe: Array = []
 	if not input.is_empty() and Recipes.PROCESS[kind].has(input.id):
 		recipe = Recipes.PROCESS[kind][input.id]
@@ -226,7 +231,10 @@ func _process(dt: float) -> void:
 					inventory.set_slot(2, out)
 		else:
 			progress = 0.0
-	var lit := burn > 0.0
+	_visuals(dt, burn > 0.0)
+
+
+func _visuals(dt: float, lit: bool) -> void:
 	if _fire:
 		_fire.emitting = lit
 	if _light:

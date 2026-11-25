@@ -9,7 +9,10 @@ var owners := {}
 
 
 func tool_hit_shape(tool_id: String, point: Vector3, normal: Vector3, player: Node, shape_idx: int) -> bool:
-	var owner_id := shape_find_owner(shape_idx)
+	return hit_owner(shape_find_owner(shape_idx), tool_id, point, normal, player)
+
+
+func hit_owner(owner_id: int, tool_id: String, point: Vector3, normal: Vector3, player: Node) -> bool:
 	if not owners.has(owner_id):
 		return false
 	var info: Dictionary = owners[owner_id]
@@ -61,7 +64,10 @@ func prompt_shape(shape_idx: int, player: Node) -> String:
 
 
 func use_shape(shape_idx: int, player: Node) -> bool:
-	var owner_id := shape_find_owner(shape_idx)
+	return use_owner(shape_find_owner(shape_idx), player)
+
+
+func use_owner(owner_id: int, player: Node) -> bool:
 	if not owners.has(owner_id):
 		return false
 	var info: Dictionary = owners[owner_id]

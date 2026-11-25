@@ -21,15 +21,27 @@ func add(list: Array) -> Consist:
 
 
 func _physics_process(dt: float) -> void:
+	if Net.is_client_online():
+		# the host simulates; clients extrapolate along the rails and get corrected by snapshots
+		for c in consists:
+			var ds := c.v * dt
+			for veh in c.vehicles:
+				veh.advance(ds)
+			for veh in c.vehicles:
+				veh.apply_pose()
+				veh.visuals(dt, c.v, ds)
+		return
 	var steps := {}
 	for c in consists:
 		steps[c] = c.step(dt)
 	_collide(dt)
 	for c in consists:
 		var st: Dictionary = steps[c]
+		Net.mute += 1
 		for veh in c.vehicles:
 			veh.apply_pose()
 			veh.visuals(dt, c.v, st.ds)
+		Net.mute -= 1
 		if st.impact > 0.6:
 			var p := c.lead().global_position if c.v <= 0.0 else c.tail().global_position
 			Sfx.play_at("buffer_hit", p, linear_to_db(clampf(st.impact / 4.0, 0.25, 1.0)), 0.1)

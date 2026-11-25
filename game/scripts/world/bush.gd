@@ -28,6 +28,11 @@ static func create(parent: Node, pos: Vector3, scale := 1.0) -> Bush:
 	cs.shape = sp
 	cs.position.y = 0.6 * scale
 	b.add_child(cs)
+	b.set_meta("scale", scale)
+	if Net.local_spawn_blocked():
+		b.queue_free()
+	elif NetSync.hosting():
+		NetSync.inst.register(b, "bush")
 	return b
 
 

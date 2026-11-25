@@ -84,7 +84,8 @@ func add_pump(p: Node, strength: float) -> void:
 
 func _physics_process(_dt: float) -> void:
 	# holding W while on the pump handle pumps at a steady pace
-	if pumping_player and is_instance_valid(pumping_player) and Input.is_action_pressed("move_forward") and (pumping_player as Player).input_enabled:
+	var pp := pumping_player as Player
+	if pp and is_instance_valid(pp) and ((pp.net_peer == 0 and Input.is_action_pressed("move_forward") and pp.input_enabled) or (pp.net_peer != 0 and pp.remote_forward)):
 		add_pump(pumping_player, 0.8)
 
 

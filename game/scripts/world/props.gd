@@ -105,6 +105,7 @@ static func switch_stand(parent: Node3D, net: TrackNetwork, node: TrackNetwork.T
 	var side := t.cross(Vector3.UP).normalized()
 	var root := StaticBody3D.new()
 	root.set_meta("surface", "metal")
+	root.set_meta("stand", node.name)
 	parent.add_child(root)
 	root.global_transform = Transform3D(Basis(side, Vector3.UP, -t).orthonormalized().rotated(Vector3.UP, PI * 0.5), node.pos - side * 2.6 + Vector3.DOWN * 0.3)
 	var m := _glb("res://assets/models/props/switch_stand.glb")
@@ -137,6 +138,8 @@ static func switch_stand(parent: Node3D, net: TrackNetwork, node: TrackNetwork.T
 					Sfx.play_at("lever", root.global_position, -10.0)
 					return
 		node.state = 1 - node.state
+		if NetSync.hosting():
+			NetSync.inst.op("switch", [node.name, node.state])
 		Sfx.play_at("switch", node.pos, 0.0)
 		Sfx.play_at("lever", root.global_position, -3.0)
 		refresh.call()

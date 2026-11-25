@@ -32,6 +32,10 @@ static func create(parent: Node, xf: Transform3D, lvl := 0, piece := "boulder_l0
 	parent.add_child(r)
 	r.global_transform = xf
 	r._build()
+	if Net.local_spawn_blocked():
+		r.queue_free()
+	elif NetSync.hosting():
+		NetSync.inst.register(r, "rock")
 	return r
 
 

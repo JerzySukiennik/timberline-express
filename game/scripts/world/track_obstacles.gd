@@ -34,7 +34,9 @@ func _process(dt: float) -> void:
 	if _timer > 0.0 or main.player == null:
 		return
 	_timer = 1.0
-	var p: Vector3 = main.player.global_position
+	var focus: Array = [main.player.global_position]
+	if NetSync.hosting():
+		focus = NetSync.inst.players().map(func(pl: Node) -> Vector3: return (pl as Node3D).global_position)
 	var removed: Dictionary = main.world.removed.get("obstacles", {})
 	for seg in net.segments:
 		if seg.visual == null:
@@ -43,15 +45,17 @@ func _process(dt: float) -> void:
 			if active.has(o.id) or removed.has(o.id):
 				continue
 			var pos: Vector3 = (o.seg as TrackNetwork.TrackSegment).point(o.s)
-			if Vector2(pos.x - p.x, pos.z - p.z).length() > 240.0:
+			if _near(focus, pos) > 240.0:
 				continue
 			o["pos"] = pos
+			Net.applying += 1
 			o["node"] = _spawn(o)
+			Net.applying -= 1
 			o["cleared"] = false
 			active[o.id] = o
 	for id in active.keys():
 		var o: Dictionary = active[id]
-		if Vector2(o.pos.x - p.x, o.pos.z - p.z).length() > 420.0:
+		if _near(focus, o.pos) > 420.0:
 			if is_instance_valid(o.node):
 				o.node.queue_free()
 			active.erase(id)
@@ -86,7 +90,26 @@ func _spawn(o: Dictionary) -> Node3D:
 	return null
 
 
+func _near(points: Array, pos: Vector3) -> float:
+	var best := INF
+	for q in points:
+		best = minf(best, Vector2(pos.x - q.x, pos.z - q.z).length())
+	return best
+
+
+## Client: the host cleared an obstacle.
+func net_clear(id: String) -> void:
+	if active.has(id):
+		var node: Variant = active[id].get("node")
+		if node != null and is_instance_valid(node):
+			(node as Node).queue_free()
+		if not active[id].cleared:
+			clear(id)
+
+
 func clear(id: String) -> void:
+	if NetSync.hosting():
+		NetSync.inst.op("obs", id)
 	if not main.world.removed.has("obstacles"):
 		main.world.removed["obstacles"] = {}
 	main.world.removed["obstacles"][id] = true

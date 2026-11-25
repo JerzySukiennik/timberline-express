@@ -9,7 +9,7 @@ var night := false
 
 func _process(dt: float) -> void:
 	_timer -= dt
-	if _timer > 0.0 or main == null or main.player == null or main.loading:
+	if _timer > 0.0 or main == null or main.player == null or main.loading or Net.is_client_online():
 		return
 	_timer = 4.0
 	var p: Vector3 = main.player.global_position
